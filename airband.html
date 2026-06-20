@@ -90,6 +90,11 @@
       <div class="ctl-wrap"><label class="ctl">SQUELCH</label><input id="squelch" type="range" min="0" max="100" value="14" /></div>
       <div class="ctl-wrap"><label class="ctl">VOLUME</label><input id="volume" type="range" min="0" max="100" value="70" /></div>
     </div>
+    <div class="row" style="margin-top:14px;">
+      <div class="ctl-wrap"><label class="ctl">LNA GAIN — <span id="lnaV">32</span> dB</label><input id="lnaG" type="range" min="0" max="40" step="8" value="32" /></div>
+      <div class="ctl-wrap"><label class="ctl">VGA GAIN — <span id="vgaV">40</span> dB</label><input id="vgaG" type="range" min="0" max="62" step="2" value="40" /></div>
+    </div>
+    <label style="display:flex;align-items:center;gap:8px;margin-top:12px;font-size:13px;color:var(--g);"><input id="ampG" type="checkbox" /> RF amp (+~14 dB — turn this ON for weak / distant / indoor signals)</label>
     <div style="margin-top:14px;">
       <label class="ctl">SIGNAL <span id="sqState" class="pill sq" style="display:none;">squelched</span> <span id="rxState" class="pill">idle</span></label>
       <div class="meter"><i id="meter"></i></div>
@@ -155,6 +160,7 @@
   const cosStep = Math.cos(stepAng), sinStep = Math.sin(stepAng);
 
   let freqMHz = 0, running = false, dev = null;
+  let lnaGain = 32, vgaGain = 40, ampOn = 0;   // adjustable RF gains
   let audioCtx = null, masterGain = null, nextTime = 0;
   let squelch = 0.02, volume = 0.7;
   // streaming DSP carry-state
@@ -183,6 +189,10 @@
     const M = Math.floor(center/1e6), H = center - M*1e6;
     await out(HRF.SET_FREQ, 0, 0, new Uint8Array(u32(M).concat(u32(H))));
   }
+  async function applyGains(){
+    if(!dev) return;
+    try{ await inn(HRF.SET_LNA_GAIN,0,lnaGain,1); await inn(HRF.SET_VGA_GAIN,0,vgaGain,1); await out(HRF.AMP_ENABLE,ampOn,0); }catch(e){}
+  }
 
   async function startRadio(){
     if(!navigator.usb){ status("WebUSB unsupported — use desktop Chrome or Edge."); return; }
@@ -196,9 +206,9 @@
       await out(HRF.SAMPLE_RATE_SET,0,0,new Uint8Array(u32(FS).concat(u32(1))));
       const bw=1750000; await out(HRF.BASEBAND_FILTER_BANDWIDTH_SET, bw&0xffff,(bw>>>16)&0xffff);
       await setHwFreq(freqMHz);
-      await inn(HRF.SET_LNA_GAIN,0,24,1);
-      await inn(HRF.SET_VGA_GAIN,0,30,1);
-      await out(HRF.AMP_ENABLE,0,0);
+      await inn(HRF.SET_LNA_GAIN,0,lnaGain,1);
+      await inn(HRF.SET_VGA_GAIN,0,vgaGain,1);
+      await out(HRF.AMP_ENABLE,ampOn,0);
       await out(HRF.SET_TRANSCEIVER_MODE,HRF.RX,0);
 
       audioCtx = audioCtx || new (window.AudioContext||window.webkitAudioContext)();
@@ -296,6 +306,9 @@
 
   $("squelch").addEventListener("input", e=>{ squelch = (e.target.value/100)*0.12; });
   $("volume").addEventListener("input", e=>{ volume = e.target.value/100; if(masterGain) masterGain.gain.value = volume; });
+  $("lnaG").addEventListener("input", e=>{ lnaGain = +e.target.value; $("lnaV").textContent = lnaGain; applyGains(); });
+  $("vgaG").addEventListener("input", e=>{ vgaGain = +e.target.value; $("vgaV").textContent = vgaGain; applyGains(); });
+  $("ampG").addEventListener("change", e=>{ ampOn = e.target.checked ? 1 : 0; applyGains(); });
   squelch = (14/100)*0.12;
 
   // ---- scanner ----
