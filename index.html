@@ -242,7 +242,7 @@
   <footer>Live data &copy; <a href="https://airplanes.live" target="_blank" rel="noopener">airplanes.live</a> contributors. Positions are approximate and for hobby/educational use only — not for navigation.</footer>
 <script>
 "use strict";
-const CFG = { dataUrl: "https://api.airplanes.live/v2/point/", refreshMs: 12000, sweepPeriodMs: 4000, trailMiles: 15, goneMs: 20000 };
+const CFG = { dataUrl: "https://api.airplanes.live/v2/point/", refreshMs: 12000, sweepPeriodMs: 4000, trailFade: 25, trailMax: 32, goneMs: 20000 };
 const KM_PER_MI = 1.60934, MI_PER_KM = 0.621371, KM_PER_NM = 1.852;
 const THEMES = {
   green: { name:"Green", accent:"#36ff8b", dim:"#1f9c54", faint:"rgba(54,255,139,0.18)", rgb:[54,255,139], text:"#b8ffd4", bg:"radial-gradient(circle at 50% 50%, #053a1d 0%, #021c0d 60%, #001206 100%)" },
@@ -604,7 +604,8 @@ function drawTrails(now) {
     if (!pts || pts.length < 2) continue;
     const headD = pts[pts.length - 1].d;
     for (let i = 1; i < pts.length; i++) {
-      const a0 = Math.max(0, 1 - (headD - pts[i].d) / CFG.trailMiles);
+      const behind = headD - pts[i].d;
+      const a0 = behind <= CFG.trailFade ? 1 : Math.max(0, (CFG.trailMax - behind) / (CFG.trailMax - CFG.trailFade));
       if (a0 <= 0) continue;
       const col = pts[i].col;
       ctx.strokeStyle = "rgba(" + col[0] + "," + col[1] + "," + col[2] + "," + (a0 * 0.4) + ")";
@@ -675,7 +676,7 @@ function drawBlips(now) {
         arr.push({ x: p.x, y: p.y, t: now, col, d });
       }
       const headD = arr.length ? arr[arr.length - 1].d : 0;
-      while (arr.length > 1 && headD - arr[0].d > CFG.trailMiles) arr.shift();
+      while (arr.length > 1 && headD - arr[0].d > CFG.trailMax) arr.shift();
     }
     if (sel) {
       ctx.strokeStyle = "rgba(255,225,150,0.9)"; ctx.lineWidth = 2;
