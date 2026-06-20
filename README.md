@@ -46,8 +46,6 @@ Because the whole app is a single `index.html` at the repo root, GitHub Pages ca
 4. After a minute your radar is live at
    `https://<your-username>.github.io/R4D4RVU/` (for this repo: https://raddad87.github.io/R4D4RVU/).
 
-A ready-made GitHub Actions workflow (`.github/workflows/pages.yml`) is also included as an alternative — to use it instead, set the Pages **Source** to **GitHub Actions**.
-
 ---
 
 ## 🔑 Getting OpenSky API credentials
@@ -124,10 +122,9 @@ const CFG = {
 
 ```
 R4D4RVU/
-├── index.html                 # the entire app (HTML + CSS + JS)
-├── README.md                  # this file
-├── LICENSE                    # MIT
-└── .github/workflows/pages.yml# auto-deploy to GitHub Pages
+├── index.html    # the entire app (HTML + CSS + JS)
+├── README.md     # this file
+└── LICENSE       # MIT
 ```
 
 ---
