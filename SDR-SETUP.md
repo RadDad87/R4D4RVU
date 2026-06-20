@@ -133,8 +133,9 @@ https://raddad87.github.io/R4D4RVU/ → **⚙ → Data source → Local SDR**, p
 
 **Local SDR** mode reads whatever a decoder publishes, so **any SDR that decodes
 1090 MHz works** — RTL-SDR, **HackRF One**, Airspy, SDRplay, LimeSDR, etc. The
-HackRF isn't an RTL-SDR, so it uses a HackRF-capable **host decoder** (the
-in-browser WebUSB mode is RTL-SDR-only — see the note below).
+HackRF isn't an RTL-SDR, so the **most reliable** route uses a HackRF-capable
+**host decoder** (Local SDR mode). There's also a new **experimental in-browser
+HackRF (USB)** mode — see the note below.
 
 ### HackRF One — step by step
 
@@ -170,12 +171,24 @@ publish a network `aircraft.json` feed. To use the radio with R4D4RVU, connect t
 HackRF to a computer and run a host decoder as above (the PortaPack can stay
 attached; the HackRF acts as a normal USB SDR to the computer).
 
-> **Why no in-browser HackRF (yet)?** The in-browser **RTL-SDR (USB)** mode speaks
-> the RTL2832U USB protocol. HackRF uses a completely different USB command set.
-> A WebUSB HackRF decoder is technically possible (libraries like `hackrf.js` and
-> `hackrf-sweep-webusb` exist) but is a separate, hardware-specific build — for now
-> the HackRF uses the host-decoder route, which works on every OS and gives the
-> full feature set.
+### Experimental — in-browser HackRF (USB), no host decoder
+
+R4D4RVU now ships an **experimental WebUSB HackRF decoder** that tunes and decodes
+1090 MHz **inside the browser** — no `dump1090`, no install. Choose **⚙ → Data
+source → HackRF One (USB) — in browser** and pick your HackRF when prompted.
+
+- **Desktop Chrome or Edge only** (WebUSB). Serve over `http://localhost`/`https`
+  (Path B/C/F) — not `file://`.
+- **Windows:** the HackRF needs the **WinUSB** driver (install via
+  [Zadig](https://zadig.akeo.ie/)) so the browser can claim it. **Linux:** make
+  sure no other process holds the device. Close `hackrf_info`/SDR apps first.
+- It uses fixed gains (LNA 32 / VGA 48 / amp off) and a 1.75 MHz filter at 2 MS/s.
+  **It's unverified** — if you see no contacts, your HackRF still works perfectly
+  in **Local SDR** mode (above), which is the recommended path.
+
+> **Note:** the RTL-SDR in-browser path is well-tested; the HackRF in-browser path
+> is brand-new and hardware-specific. Treat it as a fun experiment and fall back to
+> the host-decoder (Local SDR) route if it misbehaves.
 
 ---
 
