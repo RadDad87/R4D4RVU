@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>R4D4RVU Airband — HackRF ATC Listener (experimental)</title>
+<style>
+  :root{ --g:#36ff8b; --dim:#1d8f54; --bg:#040b07; --panel:#08160e; --amber:#ffd166; }
+  *{ box-sizing:border-box; }
+  body{ margin:0; background:radial-gradient(circle at 50% 0%, #0a1d12, #040b07 70%); color:var(--g);
+        font-family:"SF Mono",ui-monospace,Menlo,Consolas,monospace; min-height:100vh; }
+  .wrap{ max-width:760px; margin:0 auto; padding:22px 18px 60px; }
+  h1{ font-size:20px; letter-spacing:2px; margin:0 0 2px; }
+  .sub{ color:var(--dim); font-size:12px; margin-bottom:18px; }
+  a{ color:var(--amber); }
+  .card{ background:var(--panel); border:1px solid #11371f; border-radius:12px; padding:16px; margin-bottom:14px; }
+  .freq{ font-size:46px; letter-spacing:2px; text-align:center; text-shadow:0 0 14px rgba(54,255,139,.45); }
+  .freq small{ font-size:16px; color:var(--dim); }
+  .label{ text-align:center; color:var(--amber); min-height:18px; font-size:13px; letter-spacing:1px; }
+  .row{ display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+  .row > *{ flex:1; }
+  select,input,button{ font-family:inherit; font-size:14px; background:#06120b; color:var(--g);
+        border:1px solid #1d8f54; border-radius:8px; padding:9px 10px; }
+  button{ cursor:pointer; background:#0c2417; }
+  button:hover{ background:#11351f; }
+  button.primary{ background:var(--g); color:#04210f; font-weight:bold; border-color:var(--g); }
+  button:disabled{ opacity:.45; cursor:not-allowed; }
+  label.ctl{ display:block; font-size:12px; color:var(--dim); margin:0 0 4px; letter-spacing:1px; }
+  .ctl-wrap{ flex:1; min-width:150px; }
+  input[type=range]{ width:100%; padding:0; }
+  .meter{ height:14px; background:#06120b; border:1px solid #1d8f54; border-radius:7px; overflow:hidden; }
+  .meter > i{ display:block; height:100%; width:0%; background:linear-gradient(90deg,var(--dim),var(--g)); transition:width .08s linear; }
+  .status{ text-align:center; font-size:12px; color:var(--dim); margin-top:6px; min-height:16px; }
+  .pill{ display:inline-block; padding:1px 8px; border:1px solid var(--dim); border-radius:10px; font-size:11px; color:var(--dim); }
+  .pill.rx{ color:#04210f; background:var(--g); border-color:var(--g); }
+  .pill.sq{ color:var(--amber); border-color:var(--amber); }
+  .note{ font-size:11px; color:var(--dim); line-height:1.6; }
+  .tunebtns button{ flex:0 0 auto; min-width:52px; }
+  .freqinput{ display:flex; gap:8px; }
+  .freqinput input{ flex:1; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>📻 R4D4RVU AIRBAND</h1>
+  <div class="sub">In-browser HackRF ATC listener · VHF airband AM · <span class="pill">EXPERIMENTAL</span> · <a href="./index.html">← back to radar</a></div>
+
+  <div class="card">
+    <div class="freq" id="freqDisplay">—<small> MHz</small></div>
+    <div class="label" id="freqLabel">pick a frequency below</div>
+    <div class="row tunebtns" style="margin-top:10px; justify-content:center;">
+      <button id="dn">− 25 kHz</button>
+      <button id="up">+ 25 kHz</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="row">
+      <select id="preset" style="flex:2;">
+        <option value="">— choose a channel —</option>
+      </select>
+    </div>
+    <div class="row" style="margin-top:10px;">
+      <div class="freqinput">
+        <input id="manual" type="number" step="0.005" min="108" max="138" placeholder="manual MHz e.g. 119.100" />
+        <button id="tuneManual" style="flex:0 0 auto;">Tune</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="row">
+      <button id="start" class="primary">▶ Start (pick HackRF)</button>
+      <button id="stop" disabled>■ Stop</button>
+    </div>
+    <div class="row" style="margin-top:14px;">
+      <div class="ctl-wrap"><label class="ctl">SQUELCH</label><input id="squelch" type="range" min="0" max="100" value="14" /></div>
+      <div class="ctl-wrap"><label class="ctl">VOLUME</label><input id="volume" type="range" min="0" max="100" value="70" /></div>
+    </div>
+    <div style="margin-top:14px;">
+      <label class="ctl">SIGNAL <span id="sqState" class="pill sq" style="display:none;">squelched</span> <span id="rxState" class="pill">idle</span></label>
+      <div class="meter"><i id="meter"></i></div>
+    </div>
+    <div class="status" id="status">Desktop Chrome/Edge only. Plug in your HackRF, click Start, pick it in the popup.</div>
+  </div>
+
+  <div class="card note">
+    <b>How it works:</b> the HackRF tunes to the channel (with a 250&nbsp;kHz digital IF to dodge the DC spur), the page mixes it to baseband, low-pass-decimates 2&nbsp;MS/s down to 10&nbsp;kHz audio, AM-envelope-detects it, and plays it through your speakers — all over WebUSB, nothing installed. It listens to <b>one frequency at a time</b>. Tower/ground/clearance are usually busiest; approach &amp; departure (Potomac) cover the whole DC area. Gains are fixed (LNA&nbsp;24 / VGA&nbsp;30 / amp&nbsp;off); if audio is weak or noisy, try a different channel or a 1090/airband whip antenna.<br><br>
+    <b>Experimental &amp; unverified.</b> AM demod in JS is CPU-heavy and adjacent-channel rejection is basic. Listening to ATC is legal in the US; transmitting is not. If a channel is dead, no one's talking — try a busier one.
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  // ---- preset frequencies (MHz, AM airband). Source: OurAirports / FAA. ----
+  const PRESETS = [
+    { g:"DCA — Reagan National", items:[
+      ["DCA Tower", 119.100],
+      ["DCA Ground", 121.700],
+      ["DCA Clearance", 128.250],
+      ["DCA ATIS", 132.650],
+      ["DCA Approach (Potomac)", 119.850],
+      ["DCA Approach (Potomac)", 124.200],
+      ["DCA Departure (Potomac)", 118.950],
+      ["DCA Departure (Potomac)", 125.650],
+    ]},
+    { g:"IAD — Dulles", items:[
+      ["IAD Tower", 120.100],
+      ["IAD Ground", 121.900],
+      ["IAD Clearance", 135.700],
+      ["IAD ATIS", 134.850],
+      ["IAD Ramp", 129.550],
+      ["IAD Approach (Potomac)", 120.450],
+      ["IAD Departure (Potomac)", 125.050],
+    ]},
+    { g:"BWI — Baltimore/Washington", items:[
+      ["BWI Tower", 119.400],
+      ["BWI Ground", 121.900],
+      ["BWI Clearance", 118.050],
+      ["BWI Approach (Potomac)", 119.000],
+      ["BWI Departure (Potomac)", 126.750],
+      ["BWI ATIS (VOR)", 115.100],
+    ]},
+  ];
+
+  const $ = id => document.getElementById(id);
+  const presetSel = $("preset");
+  PRESETS.forEach(grp=>{
+    const og = document.createElement("optgroup"); og.label = grp.g;
+    grp.items.forEach(([name,f])=>{ const o=document.createElement("option"); o.value=f.toFixed(3); o.textContent=name+"  "+f.toFixed(3); o.dataset.name=name; og.appendChild(o); });
+    presetSel.appendChild(og);
+  });
+
+  // ---- DSP / radio state ----
+  const FS = 2000000;           // HackRF sample rate
+  const IF = 250000;            // digital IF offset to dodge DC spur
+  const DECIM = 200;            // 2 MS/s -> 10 kHz audio
+  const AUDIO_RATE = FS / DECIM;
+  const stepAng = 2*Math.PI*IF/FS;
+  const cosStep = Math.cos(stepAng), sinStep = Math.sin(stepAng);
+
+  let freqMHz = 0, running = false, dev = null;
+  let audioCtx = null, masterGain = null, nextTime = 0;
+  let squelch = 0.02, volume = 0.7;
+  // streaming DSP carry-state
+  let phC=1, phS=0, phN=0, accI=0, accQ=0, accCount=0, dcEMA=0;
+
+  function setFreqDisplay(){
+    $("freqDisplay").innerHTML = (freqMHz? freqMHz.toFixed(3) : "—") + "<small> MHz</small>";
+  }
+  function status(s){ $("status").textContent = s; }
+  function setRx(state){
+    const p=$("rxState");
+    if(state==="rx"){ p.textContent="receiving"; p.className="pill rx"; }
+    else { p.textContent=state; p.className="pill"; }
+  }
+
+  // ---- HackRF WebUSB control (libhackrf protocol) ----
+  const HRF={ VID:0x1d50, PIDS:[0x6089,0x604b,0xcc15], SET_TRANSCEIVER_MODE:1, SAMPLE_RATE_SET:6,
+    BASEBAND_FILTER_BANDWIDTH_SET:7, SET_FREQ:16, AMP_ENABLE:17, SET_LNA_GAIN:19, SET_VGA_GAIN:20, OFF:0, RX:1 };
+  const u32=v=>[v&0xff,(v>>>8)&0xff,(v>>>16)&0xff,(v>>>24)&0xff];
+  function out(req,val,idx,data){ return dev.controlTransferOut({requestType:"vendor",recipient:"device",request:req,value:val&0xffff,index:idx&0xffff}, data||new Uint8Array(0)); }
+  function inn(req,val,idx,len){ return dev.controlTransferIn({requestType:"vendor",recipient:"device",request:req,value:val&0xffff,index:idx&0xffff}, len); }
+
+  async function setHwFreq(mhz){
+    if(!dev) return;
+    const center = Math.round(mhz*1e6) + IF;          // tune above channel by IF
+    const M = Math.floor(center/1e6), H = center - M*1e6;
+    await out(HRF.SET_FREQ, 0, 0, new Uint8Array(u32(M).concat(u32(H))));
+  }
+
+  async function startRadio(){
+    if(!navigator.usb){ status("WebUSB unsupported — use desktop Chrome or Edge."); return; }
+    if(!freqMHz){ status("Pick a frequency first."); return; }
+    try{
+      status("select your HackRF…");
+      dev = await navigator.usb.requestDevice({ filters: HRF.PIDS.map(p=>({vendorId:HRF.VID,productId:p})) });
+      await dev.open();
+      if(dev.configuration===null) await dev.selectConfiguration(1);
+      await dev.claimInterface(0);
+      await out(HRF.SAMPLE_RATE_SET,0,0,new Uint8Array(u32(FS).concat(u32(1))));
+      const bw=1750000; await out(HRF.BASEBAND_FILTER_BANDWIDTH_SET, bw&0xffff,(bw>>>16)&0xffff);
+      await setHwFreq(freqMHz);
+      await inn(HRF.SET_LNA_GAIN,0,24,1);
+      await inn(HRF.SET_VGA_GAIN,0,30,1);
+      await out(HRF.AMP_ENABLE,0,0);
+      await out(HRF.SET_TRANSCEIVER_MODE,HRF.RX,0);
+
+      audioCtx = audioCtx || new (window.AudioContext||window.webkitAudioContext)();
+      await audioCtx.resume();
+      masterGain = audioCtx.createGain(); masterGain.gain.value = volume; masterGain.connect(audioCtx.destination);
+      nextTime = 0; phC=1; phS=0; accI=0; accQ=0; accCount=0; dcEMA=0;
+      running = true;
+      $("start").disabled=true; $("stop").disabled=false;
+      setRx("rx"); status("tuned to "+freqMHz.toFixed(3)+" MHz — listening.");
+      rxLoop();
+    }catch(e){
+      const m=(e&&e.message)||String(e);
+      if(/No device selected/i.test(m)) status("No device selected.");
+      else if(/claim|access|SecurityError|interface/i.test(m)) status("Couldn't claim the HackRF — close other SDR apps (and on Windows install the WinUSB driver via Zadig).");
+      else status("Error: "+m);
+      setRx("idle");
+    }
+  }
+
+  async function stopRadio(){
+    running=false;
+    try{ if(dev){ await out(HRF.SET_TRANSCEIVER_MODE,HRF.OFF,0); await dev.releaseInterface(0); await dev.close(); } }catch(e){}
+    dev=null; setRx("idle"); status("stopped."); $("start").disabled=false; $("stop").disabled=true;
+    $("meter").style.width="0%"; $("sqState").style.display="none";
+  }
+
+  function playChunk(f32){
+    if(!f32.length) return;
+    const buf = audioCtx.createBuffer(1, f32.length, AUDIO_RATE);
+    buf.copyToChannel(f32, 0);
+    const src = audioCtx.createBufferSource(); src.buffer=buf; src.connect(masterGain);
+    const now = audioCtx.currentTime;
+    if(nextTime < now + 0.02) nextTime = now + 0.06;   // resync if we fell behind
+    src.start(nextTime); nextTime += buf.duration;
+  }
+
+  function processIQ(int8){
+    const out=[];
+    for(let i=0; i+1<int8.length; i+=2){
+      const I=int8[i]/128, Q=int8[i+1]/128;
+      const mi = I*phC - Q*phS;          // mix channel (-IF) up to baseband
+      const mq = I*phS + Q*phC;
+      accI+=mi; accQ+=mq; accCount++;
+      const nc=phC*cosStep - phS*sinStep, ns=phS*cosStep + phC*sinStep; phC=nc; phS=ns;
+      if(((++phN)&1023)===0){ const n=1/Math.hypot(phC,phS); phC*=n; phS*=n; }
+      if(accCount>=DECIM){
+        const aI=accI/DECIM, aQ=accQ/DECIM;
+        const env=Math.hypot(aI,aQ);
+        dcEMA += (env-dcEMA)*0.0009;       // ~120 ms carrier tracker @10 kHz
+        let a=0;
+        if(dcEMA>squelch){ a=((env-dcEMA)/(dcEMA+1e-7))*volume; if(a>1)a=1; else if(a<-1)a=-1; }
+        out.push(a);
+        accI=0; accQ=0; accCount=0;
+      }
+    }
+    // UI meter + squelch indicator
+    const lvl = Math.min(1, dcEMA*6);
+    $("meter").style.width = (lvl*100).toFixed(0)+"%";
+    $("sqState").style.display = (dcEMA>squelch)?"none":"inline-block";
+    if(out.length) playChunk(Float32Array.from(out));
+  }
+
+  async function rxLoop(){
+    const LEN = 128*1024;
+    while(running){
+      let r;
+      try{ r = await dev.transferIn(1, LEN); }
+      catch(e){ status("USB read error — HackRF disconnected?"); break; }
+      if(!running) break;
+      if(!r || r.status!=="ok" || !r.data || !r.data.byteLength) continue;
+      const int8 = new Int8Array(r.data.buffer, r.data.byteOffset, r.data.byteLength);
+      processIQ(int8);
+      await new Promise(res=>setTimeout(res,0));
+    }
+  }
+
+  // ---- tuning ----
+  async function tune(mhz, label){
+    freqMHz = mhz; setFreqDisplay();
+    $("freqLabel").textContent = label || (mhz.toFixed(3)+" MHz");
+    if(running && dev) { try{ await setHwFreq(mhz); status("retuned to "+mhz.toFixed(3)+" MHz."); }catch(e){ status("retune failed: "+e.message); } }
+  }
+
+  presetSel.addEventListener("change", ()=>{
+    const o = presetSel.selectedOptions[0]; if(!o || !o.value) return;
+    tune(parseFloat(o.value), o.dataset.name);
+  });
+  $("tuneManual").addEventListener("click", ()=>{
+    const v=parseFloat($("manual").value); if(isNaN(v)||v<108||v>138){ status("Enter a MHz value between 108 and 138."); return; }
+    presetSel.value=""; tune(v);
+  });
+  $("up").addEventListener("click", ()=>{ if(freqMHz) tune(Math.round((freqMHz+0.025)*1000)/1000); });
+  $("dn").addEventListener("click", ()=>{ if(freqMHz) tune(Math.round((freqMHz-0.025)*1000)/1000); });
+
+  $("squelch").addEventListener("input", e=>{ squelch = (e.target.value/100)*0.12; });
+  $("volume").addEventListener("input", e=>{ volume = e.target.value/100; if(masterGain) masterGain.gain.value = volume; });
+  squelch = (14/100)*0.12;
+
+  $("start").addEventListener("click", startRadio);
+  $("stop").addEventListener("click", stopRadio);
+
+  if(!navigator.usb) status("WebUSB not available — open this in desktop Chrome or Edge.");
+})();
+</script>
+</body>
+</html>
