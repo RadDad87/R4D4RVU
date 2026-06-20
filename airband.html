@@ -55,6 +55,10 @@
   </div>
 
   <div class="card">
+    <div class="row" style="margin-bottom:10px;">
+      <input id="airportSearch" type="text" placeholder="airport code — e.g. JFK, KSEA, ORD" style="flex:2;" />
+      <button id="airportGo" style="flex:0 0 auto;">Load</button>
+    </div>
     <div class="row">
       <select id="preset" style="flex:2;">
         <option value="">— choose a channel —</option>
@@ -70,12 +74,7 @@
 
   <div class="card">
     <div class="row">
-      <select id="scanScope" style="flex:2;">
-        <option value="all">Scan: all channels</option>
-        <option value="DCA">Scan: DCA — Reagan National</option>
-        <option value="IAD">Scan: IAD — Dulles</option>
-        <option value="BWI">Scan: BWI — Baltimore/Washington</option>
-      </select>
+      <div style="flex:2;align-self:center;color:var(--dim);font-size:13px;">Scans the channels of the loaded airport</div>
       <button id="scanBtn">📡 Scan</button>
     </div>
     <div class="status" id="scanStatus">Scanner cycles channels and stops on any with activity, then resumes when it goes quiet. (Start the radio first.)</div>
@@ -150,6 +149,54 @@
     grp.items.forEach(([name,f])=>{ const o=document.createElement("option"); o.value=f.toFixed(3); o.textContent=name+"  "+f.toFixed(3); o.dataset.name=name; og.appendChild(o); });
     presetSel.appendChild(og);
   });
+
+  // ---- nationwide airport search (OurAirports frequency DB, fetched on demand) ----
+  let FREQDB = null;
+  function parseCSVLine(line){
+    const out=[]; let cur="", q=false;
+    for(let i=0;i<line.length;i++){ const c=line[i];
+      if(q){ if(c==='"'){ if(line[i+1]==='"'){cur+='"';i++;} else q=false; } else cur+=c; }
+      else { if(c==='"') q=true; else if(c===","){ out.push(cur); cur=""; } else cur+=c; } }
+    out.push(cur); return out;
+  }
+  const NICE={TWR:"Tower",GND:"Ground",CLD:"Clearance",CLRD:"Clearance",DEL:"Clearance",ATIS:"ATIS","D-ATIS":"ATIS",APP:"Approach",DEP:"Departure","A/D":"App/Dep",ARR:"Arrival",CTAF:"CTAF",UNIC:"UNICOM",UNICOM:"UNICOM",MULTICOM:"MULTICOM",RMP:"Ramp",AWOS:"Weather",ASOS:"Weather",FSS:"Radio",RCO:"Radio",RDO:"Radio"};
+  function niceType(t){ return NICE[t] || t || "Comm"; }
+  async function loadFreqDB(){
+    if(FREQDB) return FREQDB;
+    status("downloading nationwide airport database (first search only)…");
+    const r = await fetch("https://davidmegginson.github.io/ourairports-data/airport-frequencies.csv");
+    if(!r.ok) throw new Error("http "+r.status);
+    const text = await r.text();
+    const NAV = new Set(["ILS","LOC","GP","GS","DME","NDB","VOR","VOT","TAC","MKR"]);
+    const idx = {}, lines = text.split("\n");
+    for(let i=1;i<lines.length;i++){ const line=lines[i]; if(!line) continue;
+      const f=parseCSVLine(line), ident=f[2], type=(f[3]||"").toUpperCase(), mhz=parseFloat(f[5]);
+      if(!ident||isNaN(mhz)||mhz<108||mhz>137||NAV.has(type)) continue;
+      (idx[ident]=idx[ident]||[]).push({type:type, desc:(f[4]||"").trim(), mhz:mhz});
+    }
+    FREQDB=idx; return idx;
+  }
+  function fillPreset(code, rows){
+    presetSel.innerHTML="";
+    const ph=document.createElement("option"); ph.value=""; ph.textContent="— "+code+" channels —"; presetSel.appendChild(ph);
+    const og=document.createElement("optgroup"); og.label=code;
+    rows.forEach(r=>{ const lab=niceType(r.type)+(r.desc?(" — "+r.desc):""); const o=document.createElement("option"); o.value=r.mhz.toFixed(3); o.textContent=lab+"  "+r.mhz.toFixed(3); o.dataset.name=code+" "+niceType(r.type); og.appendChild(o); });
+    presetSel.appendChild(og);
+  }
+  async function searchAirport(){
+    const raw=$("airportSearch").value.trim().toUpperCase(); if(!raw) return;
+    let db; try{ db=await loadFreqDB(); }catch(e){ status("Could not load the airport database — airport search needs internet."); return; }
+    let code=null, rows=null;
+    for(const cand of [raw, "K"+raw, "P"+raw, "C"+raw]){ if(db[cand]&&db[cand].length){ code=cand; rows=db[cand]; break; } }
+    if(!rows){ status('No airband frequencies for "'+raw+'". Try the ICAO (e.g. KSEA) or US IATA (SEA) code.'); return; }
+    const ord={TWR:0,GND:1,CLD:2,CLRD:2,DEL:2,ATIS:3,"D-ATIS":3,APP:4,DEP:5,"A/D":5};
+    rows=rows.slice().sort((a,b)=>((ord[a.type]==null?9:ord[a.type])-(ord[b.type]==null?9:ord[b.type])));
+    fillPreset(code, rows);
+    if(scanOn) stopScan(false);
+    status(code+": "+rows.length+" channels loaded — pick one or hit Scan.");
+  }
+  $("airportGo").addEventListener("click", searchAirport);
+  $("airportSearch").addEventListener("keydown", e=>{ if(e.key==="Enter"){ e.preventDefault(); searchAirport(); } });
 
   // ---- DSP / radio state ----
   const FS = 2000000;           // HackRF sample rate
@@ -322,9 +369,7 @@
   let scanOn=false, scanList=[], scanIdx=-1, scanHold=false, lastActiveT=0, dwellT=0, retuning=false;
   const SCAN_SETTLE=300, SCAN_LISTEN=450, SCAN_RESUME=2500;   // ms: settle after retune / listen window / hang time
   function buildScanList(){
-    const scope=$("scanScope").value, out=[];
-    PRESETS.forEach(g=>{ if(scope==="all" || g.g.indexOf(scope)===0) g.items.forEach(it=>out.push({name:it[0], mhz:it[1]})); });
-    return out;
+    return [...presetSel.querySelectorAll("option")].filter(o=>o.value).map(o=>({name:o.dataset.name||o.textContent.trim(), mhz:parseFloat(o.value)}));
   }
   async function advanceScan(){
     if(!scanList.length) return;
