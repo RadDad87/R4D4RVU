@@ -923,6 +923,8 @@ function boot() {
     if ([15,30,60,150,300].includes(qr)) { state.rangeMi = qr; state.rangeKm = qr * KM_PER_MI; els.rangeSel.value = String(qr); }
     const qt = q.get("track");
     if (qt) { state.tracked = qt; state.selected = qt; }
+    const qsrc = q.get("source"); if (qsrc === "sdr" || qsrc === "online") state.source = qsrc;
+    const qsdr = q.get("sdr"); if (qsdr) state.sdrUrl = qsdr;
   } catch (e) {}
   applyTheme(state.theme);
   els.source.value = state.source;

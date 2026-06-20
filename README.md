@@ -88,13 +88,21 @@ It originally targeted the **OpenSky Network**, but OpenSky's `/states/all` data
 
 ### Run it offline with an SDR dongle
 
-R4D4RVU can read directly from your own receiver instead of the internet:
+R4D4RVU can read directly from your own RTL-SDR receiver instead of the internet. The repo ships a **one-command stack** that runs the decoder and the radar together:
 
-1. Run **`dump1090-fa`** or **`readsb`** with an RTL-SDR dongle (e.g. on a Raspberry Pi). These publish a live `aircraft.json` — for example `http://localhost:8080/data/aircraft.json` — in the same `readsb` format the app already understands.
-2. **Serve this app from the same machine** over `http://localhost` (drop `index.html` into the decoder's web root, or run any local static server). Browsers block an `https://` page from reading `http://localhost`, so same-origin/http hosting is required for offline use.
-3. Open **⚙ Set location manually / options**, set **Data source → Local SDR**, enter your `aircraft.json` URL, set your receiver's latitude/longitude, and **Save & connect**.
+```bash
+cp .env.example .env     # set your receiver LAT / LON
+docker compose up -d
+# open http://localhost:8078/  — launches straight into SDR mode
+```
 
-The app fetches the full aircraft list and filters by range locally — everything (symbols, colours, military/responder detection via `dbFlags`, trails, sound) works with zero internet. The online-only extras (airline/route/photo lookups) simply show "—" when offline.
+This brings up **readsb** (decoding the dongle) plus an **nginx** that serves the app and proxies the feed same-origin, so the browser reads `aircraft.json` with no CORS or mixed-content issues. Already running **dump1090-fa / PiAware / tar1090**? Use the installer instead:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/RadDad87/R4D4RVU/main/install-on-dump1090fa.sh | sudo bash
+```
+
+Full instructions, tuning, and troubleshooting are in **[SDR-SETUP.md](SDR-SETUP.md)**. Everything on the scope works offline (symbols, colours, military/responder detection via `dbFlags`, trails, sound); only the airline/route/photo lookups need internet and simply show "—" without it.
 
 ---
 
@@ -130,9 +138,14 @@ Please respect airplanes.live's [usage guidance](https://airplanes.live/api-guid
 
 ```
 R4D4RVU/
-├── index.html    # the entire app (HTML + CSS + JS)
-├── README.md     # this file
-└── LICENSE       # MIT
+├── index.html                  # the entire app (HTML + CSS + JS)
+├── README.md                   # this file
+├── SDR-SETUP.md                # offline / RTL-SDR setup guide
+├── docker-compose.yml          # one-command readsb + radar stack
+├── nginx.conf                  # serves the app + same-origin feed proxy
+├── .env.example                # receiver location / tuner settings
+├── install-on-dump1090fa.sh    # installer for existing decoders
+└── LICENSE                     # MIT
 ```
 
 ## ⚖️ Disclaimer
