@@ -291,6 +291,46 @@ const state = {
 };
 const trails = {};            // icao24 -> [{x,y,t,col}]
 const enrichCache = {};       // icao24 -> {airline,route,photo,credit}
+const opCache = {}, opQueued = new Set(), opQueue = [];
+let opBusy = false;
+function classifyOwner(owner) {
+  if (!owner) return { kind: null };
+  const o = " " + owner.toUpperCase() + " ";
+  if (/(AIR FORCE|\bNAVY\b|\bARMY\b|MILITAR|MARINE CORPS|NATIONAL GUARD|\bRAF\b|\bUSAF\b|\bUSN\b|DEFEN[SC]E|LUFTWAFFE|AERONAUTICA MILITARE)/.test(o)) return { red:true, kind:"MILITARY" };
+  if (/(COAST ?GUARD|GARDE ?C[O\u00d4]TI|GUARDIA COSTERA)/.test(o)) return { red:true, kind:"COASTGUARD" };
+  if (/(POLICE|SHERIFF|STATE PATROL|HIGHWAY PATROL|CONSTABULAR|GENDARMERIE|POLIZEI|POLIC[I\u00cd]A|MOUNTED|\bRCMP\b)/.test(o)) return { red:true, kind:"POLICE" };
+  if (/(AMBULANCE|AIR MEDICAL|AIR METHODS|MEDEVAC|\bHEMS\b|\bMERCY\b|LIFE ?FLIGHT|LIFE ?GUARD|MEDICAL CENTER|HOSPITAL|MED-?TRANS|AIR EVAC|PHI AIR)/.test(o)) return { red:true, kind:"MEDICAL" };
+  if (/(\bFIRE\b|CAL ?FIRE|FOREST(RY)? SERVICE|FORESTRY|FIRE PROTECTION|FIRE DISTRICT|AERIAL FIRE)/.test(o)) return { red:true, kind:"FIRE" };
+  if (/(CUSTOMS|BORDER|HOMELAND|\bFBI\b|\bDEA\b|\bCBP\b|GOVERNMENT|MINIST|DEPARTMENT OF|FEDERAL|STATE OF |HM )/.test(o)) return { gov:true, kind:"GOV" };
+  return { kind: null };
+}
+function applyOpClass(list) {
+  let enq = 0;
+  for (const a of list) {
+    const oc = opCache[a.icao24];
+    if (oc) {
+      if (oc.kind === "MILITARY") a.mil = true;
+      if (oc.red) a.responder = true;
+      if (oc.gov) a.gov = true;
+      if (oc.kind) a.opKind = oc.kind;
+    } else if (!a.onGround && !opQueued.has(a.icao24) && enq < 50) {
+      opQueued.add(a.icao24); opQueue.push(a.icao24); enq++;
+    }
+  }
+}
+async function pumpOpQueue() {
+  if (opBusy || !opQueue.length) return;
+  opBusy = true;
+  const hex = opQueue.shift();
+  try {
+    const j = await fetch("https://api.adsbdb.com/v0/aircraft/" + hex, { signal: AbortSignal.timeout(7000) }).then(r => r.json());
+    const owner = j && j.response && j.response.aircraft && j.response.aircraft.registered_owner;
+    opCache[hex] = classifyOwner(owner);
+    const ac = state.aircraft.find(a => a.icao24 === hex);
+    if (ac) { const oc = opCache[hex]; if (oc.kind === "MILITARY") ac.mil = true; if (oc.red) ac.responder = true; if (oc.gov) ac.gov = true; if (oc.kind) ac.opKind = oc.kind; if (state.selected === hex) renderDetail(); }
+  } catch (e) { opQueued.delete(hex); }
+  opBusy = false;
+}
 let audioCtx = null, lastPing = 0, sweepPrev = 0, sonarDelay = null, sonarWet = null;
 
 function loadPrefs() {
@@ -320,7 +360,7 @@ function bearing(a, b) {
   return (toDeg(Math.atan2(y, x)) + 360) % 360;
 }
 const EMERG = { "7500": "hijack", "7600": "radio fail", "7700": "emergency" };
-const RESP_RE = /(POLICE|NPAS|HELI?MED|HEMS|MEDE?VAC|AIR ?MED|AMBUL|MEDIC|LIFE ?GUARD|LIFE ?FLIGHT|COAST ?GUARD|COASTGUARD|USCG|RESCUE|FIRE ?BIRD|SHERIFF|TROOPER|CUSTOMS|BORDER|CBP)/;
+const RESP_RE = /^(NPAS|POLICE|POL[0-9]|HEMS|HELIMED|MEDEVAC|MEDIVAC|LIFEGUARD|LIFEGRD|LIFEFLIGHT|COASTGUARD|USCG|CG[0-9]|RESCUE|RESCU|REACH|AIRMED|STARFLIGHT|FIREBIRD|SHERIFF|TROOPER)/;
 async function fetchAircraft() {
   if (!state.origin) return;
   const nm = Math.min(Math.round(state.rangeKm / KM_PER_NM) + 2, 250);
@@ -343,7 +383,7 @@ async function fetchAircraft() {
     const sq = a.squawk || null;
     const csu = (a.flight || "").trim().toUpperCase();
     const dbf = (typeof a.dbFlags === "number") ? a.dbFlags : 0;
-    const responder = RESP_RE.test(csu) || sq === "0020" || sq === "0023" || sq === "0032";
+    const responder = RESP_RE.test(csu) || sq === "0020";
     list.push({
       icao24: a.hex || "?", callsign: (a.flight || "").trim() || "------",
       origin_country: [a.t, a.r].filter(Boolean).join(" · ") || "—",
@@ -358,6 +398,7 @@ async function fetchAircraft() {
     });
   }
   list.sort((a, b) => a.dist - b.dist);
+  applyOpClass(list);
   state.aircraft = list; state.lastFetch = now;
   setMode("live"); updateReadout();
 }
@@ -481,7 +522,8 @@ function renderDetail() {
   setText("d-origin", a.origin_country || "—"); setText("d-alt", fmtAlt(a.baro_alt));
   setText("d-spd", fmtSpd(a.velocity)); setText("d-hdg", fmtHdg(a.heading));
   setText("d-vert", fmtVrt(a.vrate));
-  const _tag = a.mil ? " · MIL" : (a.responder ? " · RESPONDER" : (a.gov ? " · GOV" : ""));
+  const _kind = a.opKind || (a.mil ? "MIL" : (a.responder ? "RESPONDER" : (a.gov ? "GOV" : "")));
+  const _tag = _kind ? " · " + _kind : "";
   setText("d-sq", a.squawk ? (a.squawk + (EMERG[a.squawk] ? " ⚠ " + EMERG[a.squawk] : "") + _tag) : (_tag ? _tag.slice(3) : "—"));
   $("d-sq").style.color = a.emergency ? "#ff4fd8" : ((a.mil || a.responder) ? "#ff2b2b" : (a.gov ? "#c77dff" : "var(--green)"));
   setText("d-rb", (a.dist * MI_PER_KM).toFixed(1) + " mi / " + Math.round(a.brg) + "°");
@@ -852,6 +894,7 @@ function boot() {
   updateReadout(); setMode("demo"); seedDemo();
   if (state.origin) { setMode("live"); tick(true); } else { requestLocation(); }
   setInterval(() => tick(false), 1000);
+  setInterval(pumpOpQueue, 450);
   requestAnimationFrame(frame);
 }
 boot();
