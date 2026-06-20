@@ -300,7 +300,7 @@
 
   // ---- scanner ----
   let scanOn=false, scanList=[], scanIdx=-1, scanHold=false, lastActiveT=0, dwellT=0, retuning=false;
-  const SCAN_DWELL=500, SCAN_RESUME=1500;
+  const SCAN_SETTLE=300, SCAN_LISTEN=450, SCAN_RESUME=2500;   // ms: settle after retune / listen window / hang time
   function buildScanList(){
     const scope=$("scanScope").value, out=[];
     PRESETS.forEach(g=>{ if(scope==="all" || g.g.indexOf(scope)===0) g.items.forEach(it=>out.push({name:it[0], mhz:it[1]})); });
@@ -310,21 +310,22 @@
     if(!scanList.length) return;
     scanIdx=(scanIdx+1)%scanList.length;
     const c=scanList[scanIdx];
-    retuning=true; try{ await setHwFreq(c.mhz); freqMHz=c.mhz; setFreqDisplay(); $("freqLabel").textContent=c.name; }catch(e){} retuning=false;
+    retuning=true; try{ await setHwFreq(c.mhz); dcEMA=0; freqMHz=c.mhz; setFreqDisplay(); $("freqLabel").textContent=c.name; }catch(e){} retuning=false;
     dwellT=performance.now();
   }
   async function scanTick(){
     if(!scanOn) return;
     if(!running){ stopScan("radio stopped — start it, then Scan."); return; }
     if(retuning) return;
-    const now=performance.now(), active = dcEMA > squelch*1.4;
+    const now=performance.now(), since=now-dwellT, active = dcEMA > squelch*1.4;
     if(scanHold){
       if(active) lastActiveT=now;
-      else if(now-lastActiveT > SCAN_RESUME){ scanHold=false; dwellT=now; await advanceScan(); }
+      else if(now-lastActiveT > SCAN_RESUME){ scanHold=false; await advanceScan(); }
       $("scanStatus").textContent="● holding "+freqMHz.toFixed(3)+" MHz — "+(scanList[scanIdx]?scanList[scanIdx].name:"");
     } else {
-      if(active){ scanHold=true; lastActiveT=now; }
-      else if(now-dwellT > SCAN_DWELL){ await advanceScan(); }
+      if(since < SCAN_SETTLE){ /* let the receiver settle on the new channel before judging */ }
+      else if(active){ scanHold=true; lastActiveT=now; }
+      else if(since > SCAN_SETTLE+SCAN_LISTEN){ await advanceScan(); }
       if(!scanHold) $("scanStatus").textContent="scanning… "+freqMHz.toFixed(3)+" MHz ("+(scanIdx+1)+"/"+scanList.length+")";
     }
   }
