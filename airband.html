@@ -96,7 +96,7 @@
     </div>
     <label style="display:flex;align-items:center;gap:8px;margin-top:12px;font-size:13px;color:var(--g);"><input id="ampG" type="checkbox" /> RF amp (+~14 dB — turn this ON for weak / distant / indoor signals)</label>
     <div style="margin-top:14px;">
-      <label class="ctl">SIGNAL <span id="sqState" class="pill sq" style="display:none;">squelched</span> <span id="rxState" class="pill">idle</span></label>
+      <label class="ctl">SIGNAL <span id="sqState" class="pill sq" style="display:none;">squelched</span> <span id="rxState" class="pill">idle</span> <span id="snr" class="pill" style="float:right;">SNR — dB</span></label>
       <div class="meter"><i id="meter"></i></div>
     </div>
     <div class="status" id="status">Desktop Chrome/Edge only. Plug in your HackRF, click Start, pick it in the popup.</div>
@@ -161,6 +161,7 @@
 
   let freqMHz = 0, running = false, dev = null;
   let lnaGain = 32, vgaGain = 40, ampOn = 0;   // adjustable RF gains
+  let noiseFloor = 0, snrDb = 0;   // signal-to-noise estimate
   let audioCtx = null, masterGain = null, nextTime = 0;
   let squelch = 0.02, volume = 0.7;
   // streaming DSP carry-state
@@ -214,7 +215,7 @@
       audioCtx = audioCtx || new (window.AudioContext||window.webkitAudioContext)();
       await audioCtx.resume();
       masterGain = audioCtx.createGain(); masterGain.gain.value = volume; masterGain.connect(audioCtx.destination);
-      nextTime = 0; phC=1; phS=0; accI=0; accQ=0; accCount=0; dcEMA=0;
+      nextTime = 0; phC=1; phS=0; accI=0; accQ=0; accCount=0; dcEMA=0; noiseFloor=0; snrDb=0;
       running = true;
       $("start").disabled=true; $("stop").disabled=false;
       setRx("rx"); status("tuned to "+freqMHz.toFixed(3)+" MHz — listening.");
@@ -258,15 +259,21 @@
         const aI=accI/DECIM, aQ=accQ/DECIM;
         const env=Math.hypot(aI,aQ);
         dcEMA += (env-dcEMA)*0.0009;       // ~120 ms carrier tracker @10 kHz
+        if(noiseFloor===0) noiseFloor = env;
+        else if(env < noiseFloor) noiseFloor = noiseFloor*0.9 + env*0.1;   // snap down to quiet baseline
+        else noiseFloor = noiseFloor*0.99997 + env*0.00003;                // creep up very slowly
         let a=0;
         if(dcEMA>squelch){ a=((env-dcEMA)/(dcEMA+1e-7))*volume; if(a>1)a=1; else if(a<-1)a=-1; }
         out.push(a);
         accI=0; accQ=0; accCount=0;
       }
     }
-    // UI meter + squelch indicator
+    // UI meter + SNR + squelch indicator
     const lvl = Math.min(1, dcEMA*6);
     $("meter").style.width = (lvl*100).toFixed(0)+"%";
+    snrDb = 20*Math.log10((dcEMA+1e-9)/(noiseFloor+1e-9)); if(snrDb<0) snrDb=0;
+    const q = snrDb>=20?" strong":snrDb>=10?" ok":snrDb>=4?" weak":" noise";
+    const sn=$("snr"); if(sn) sn.textContent = "SNR "+snrDb.toFixed(0)+" dB"+q;
     $("sqState").style.display = (dcEMA>squelch)?"none":"inline-block";
     if(out.length) playChunk(Float32Array.from(out));
   }
@@ -323,7 +330,7 @@
     if(!scanList.length) return;
     scanIdx=(scanIdx+1)%scanList.length;
     const c=scanList[scanIdx];
-    retuning=true; try{ await setHwFreq(c.mhz); dcEMA=0; freqMHz=c.mhz; setFreqDisplay(); $("freqLabel").textContent=c.name; }catch(e){} retuning=false;
+    retuning=true; try{ await setHwFreq(c.mhz); dcEMA=0; noiseFloor=0; freqMHz=c.mhz; setFreqDisplay(); $("freqLabel").textContent=c.name; }catch(e){} retuning=false;
     dwellT=performance.now();
   }
   async function scanTick(){
