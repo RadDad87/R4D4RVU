@@ -21,6 +21,7 @@ R4D4RVU centers a vintage CRT-style radar scope on your location and plots every
 - **Threat & responder highlighting** — emergency squawks (7500/7600/7700) flash **pink**; **military, police, coast guard, fire, and medical/first-responder** aircraft are **bright red** with a ring; **government / customs / border** aircraft are **purple**. Classification combines the ADS-B military flag with the aircraft's registered operator (looked up via adsbdb, cached and rate-limited) plus a fast anchored-callsign pass, so it's based on who actually operates the aircraft rather than guesswork.
 - **Type-specific symbols** — jets get a winged silhouette, light aircraft a small triangle, helicopters a rotor glyph, drones a diamond, gliders a slim dart, and ground vehicles a square (from the ADS-B emitter category).
 - **Hide ground traffic** — declutter the scope by hiding parked/taxiing aircraft (on by default); the contact count shows how many are hidden, e.g. `9 (+14 gnd)`.
+- **Offline mode (SDR)** — point it at a local RTL-SDR dongle (via `dump1090-fa` or `readsb`) for a fully self-contained radar with no internet.
 - **Works on mobile** — responsive layout, finger-sized tap targets, and the circle is sized to fit your screen; tap any blip for details.
 - **Track a plane** — lock onto any aircraft and the scope draws a homing line and a pulsing ring that follow it, with its details pinned in the panel even across refreshes (shows "signal lost" if it leaves coverage).
 - **Scope HUD** — live closest / highest / fastest aircraft, plus an **"overhead" alert** when a plane passes within 1.5 mi of you.
@@ -84,6 +85,16 @@ The **Status** panel shows mode, contact count, range, your position, last updat
 This app uses **[airplanes.live](https://airplanes.live)**, a free community ADS-B network whose API allows direct browser requests (proper CORS headers) and needs no key.
 
 It originally targeted the **OpenSky Network**, but OpenSky's `/states/all` data endpoint only returns CORS headers for `opensky-network.org` itself — so a static site hosted anywhere else (GitHub Pages, localhost, `file://`) is blocked by the browser from reading it, even with valid OAuth2 credentials. Using OpenSky from the browser would require a small server-side proxy to relay the request. airplanes.live avoids that entirely.
+
+### Run it offline with an SDR dongle
+
+R4D4RVU can read directly from your own receiver instead of the internet:
+
+1. Run **`dump1090-fa`** or **`readsb`** with an RTL-SDR dongle (e.g. on a Raspberry Pi). These publish a live `aircraft.json` — for example `http://localhost:8080/data/aircraft.json` — in the same `readsb` format the app already understands.
+2. **Serve this app from the same machine** over `http://localhost` (drop `index.html` into the decoder's web root, or run any local static server). Browsers block an `https://` page from reading `http://localhost`, so same-origin/http hosting is required for offline use.
+3. Open **⚙ Set location manually / options**, set **Data source → Local SDR**, enter your `aircraft.json` URL, set your receiver's latitude/longitude, and **Save & connect**.
+
+The app fetches the full aircraft list and filters by range locally — everything (symbols, colours, military/responder detection via `dbFlags`, trails, sound) works with zero internet. The online-only extras (airline/route/photo lookups) simply show "—" when offline.
 
 ---
 
