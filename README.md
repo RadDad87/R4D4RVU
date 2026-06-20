@@ -1,6 +1,6 @@
 # R4D4RVU
 
-**A classic round radar that sweeps the skies above you — from live community ADS-B data, a local SDR dongle, or even an SDR plugged straight into your browser.**
+**A classic round radar that sweeps the skies above you — from live community ADS-B data, a local SDR dongle, or an RTL-SDR / HackRF One plugged straight into your browser — plus a bonus in-browser HackRF receiver to listen to the pilots.**
 
 ![R4D4RVU — live air-traffic radar](screenshot-radar.jpg)
 
@@ -28,6 +28,7 @@ R4D4RVU centers a vintage CRT-style radar scope on your location and plots every
 - **Shareable flight links** — copy a link that re-opens the radar locked onto the selected aircraft.
 - **Track, hide-ground, range** — lock onto a plane (homing line + ring), hide parked traffic, and pick 15–300 mi.
 - **Works on mobile** — responsive layout, finger-sized taps, the circle sized to your screen.
+- **🎧 Airband listener (experimental)** — a companion page (`airband.html`) tunes your **HackRF One** to VHF airband and plays live **ATC voice** in the browser (AM demodulated in JS), preloaded with DCA / IAD / BWI tower, ground, clearance, approach &amp; departure frequencies.
 
 ---
 
@@ -74,6 +75,14 @@ Thorough step-by-step instructions for every path — RTL-SDR (in-browser / Dock
 The in-browser decoder's libraries are **vendored in the repo** (`rtlsdr.bundle.js`, `mode-s-demodulator.bundle.js`) — so both the **RTL-SDR** and the experimental **HackRF One** WebUSB paths decode your device with **no internet**. Copy the folder to a USB stick or SSD, double-click **`serve-offline.command` / `.bat` / `.sh`** (it serves over `http://localhost` — which WebUSB requires — using Python or Node), plug in the dongle, and pick **RTL-SDR (USB)** or **Local SDR**. Everything on the scope works offline; only the airline/route/photo lookups need a connection. See **Path F** in [SDR-SETUP.md](SDR-SETUP.md).
 
 ---
+
+## 🎧 Listen to ATC voice (airband)
+
+Want to hear the pilots and controllers, not just watch the blips? The repo ships an experimental **in-browser HackRF airband receiver** — **[airband.html](airband.html)** ([live](https://raddad87.github.io/R4D4RVU/airband.html)), also linked from the radar's ⚙ options.
+
+It tunes your **HackRF One** to a VHF airband channel (118–137 MHz, with a 250 kHz digital IF to dodge the DC spur), mixes it to baseband, low-pass-decimates 2 MS/s down to 10 kHz audio, **AM-demodulates** it, and plays it through your speakers — all over WebUSB, **nothing installed**. Squelch, volume, a signal meter, ± fine-tuning, and manual frequency entry are built in. It comes preloaded with **DCA, IAD, and BWI** tower / ground / clearance / approach / departure / ATIS frequencies.
+
+> Desktop Chrome/Edge only · listens to **one frequency at a time** · the HackRF can only be claimed by one page at a time, so **stop the radar's HackRF feed before starting the airband listener**. It's **experimental** (CPU-heavy JS AM demod, basic adjacent-channel rejection). Listening to ATC is legal in the US; transmitting is not.
 
 ## 🎛️ Controls
 
@@ -122,6 +131,7 @@ const CFG = {
 R4D4RVU/
 ├── index.html                  # the entire app (HTML + CSS + JS)
 ├── rtlsdr-webusb.js            # in-browser WebUSB decoder (RTL-SDR + experimental HackRF)
+├── airband.html                # experimental in-browser HackRF airband (ATC voice) listener
 ├── rtlsdr.bundle.js            # vendored RTL-SDR driver (offline, no CDN)
 ├── mode-s-demodulator.bundle.js# vendored ADS-B demodulator (offline)
 ├── docker-compose.yml          # one-command readsb + radar stack
@@ -144,7 +154,7 @@ Positions are approximate, can be delayed, and depend on community ADS-B coverag
 
 ## 🙏 Credits
 
-Live data © [airplanes.live](https://airplanes.live) contributors · routes/owners via [adsbdb](https://www.adsbdb.com) · photos via [planespotters.net](https://www.planespotters.net) · in-browser SDR uses [rtlsdrjs](https://github.com/sandeepmistry/rtlsdrjs) (Apache-2.0) and [mode-s-demodulator](https://github.com/watson/mode-s-demodulator) (MIT).
+Live data © [airplanes.live](https://airplanes.live) contributors · routes/owners via [adsbdb](https://www.adsbdb.com) · photos via [planespotters.net](https://www.planespotters.net) · in-browser SDR uses [rtlsdrjs](https://github.com/sandeepmistry/rtlsdrjs) (Apache-2.0) and [mode-s-demodulator](https://github.com/watson/mode-s-demodulator) (MIT); the experimental HackRF WebUSB paths follow the [libhackrf](https://github.com/greatscottgadgets/hackrf) / [hackrf.js](https://github.com/mildsunrise/hackrf.js) (MIT) protocol; airband frequencies via [OurAirports](https://ourairports.com).
 
 ## 📄 License
 
