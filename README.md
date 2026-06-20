@@ -18,7 +18,9 @@ R4D4RVU centers a vintage CRT-style radar scope on your location and plots every
 - **Phosphor fade** — blips flare bright as the sweep passes their bearing, then dim like a real radar tube.
 - **Rich contact info on click** — callsign, **airline name & route (origin → destination)** via [adsbdb](https://www.adsbdb.com), a **real photo** of the aircraft via [planespotters.net](https://www.planespotters.net), plus ICAO24 hex, type & registration, altitude, speed, heading, vertical speed, squawk, and range/bearing.
 - **Altitude colour-coding** — blips are coloured by altitude band (ground · <10k · 10–20k · 20–30k · 30k+) with a legend.
-- **Emergency & military highlighting** — aircraft squawking 7500/7600/7700 flash **red**; military aircraft are ringed and labelled in **orange**.
+- **Emergency, military & government highlighting** — emergency squawks (7500/7600/7700) flash **red**; **military** aircraft are ringed **orange**; **government / special** aircraft (privacy-address, LADD, and flagged operators) are ringed **purple**.
+- **Hide ground traffic** — declutter the scope by hiding parked/taxiing aircraft (on by default); the contact count shows how many are hidden, e.g. `9 (+14 gnd)`.
+- **Track a plane** — lock onto any aircraft and the scope draws a homing line and a pulsing ring that follow it, with its details pinned in the panel even across refreshes (shows "signal lost" if it leaves coverage).
 - **Scope HUD** — live closest / highest / fastest aircraft, plus an **"overhead" alert** when a plane passes within 1.5 mi of you.
 - **Sonar ping & trails** — optional retro 'ping' as the sweep passes each contact (pitch rises with altitude), and fading breadcrumb trails showing each plane's recent track.
 - **Miles** — selectable range of 15, 30, 60, 150, or 300 miles.
@@ -60,6 +62,8 @@ Because the whole app is a single `index.html` at the repo root:
 | **Save & connect** | Stores your manual coordinates and goes live. |
 | **🔊 Ping** | Toggles a sonar beep as the sweep passes each contact (off by default). |
 | **✦ Trails** | Toggles fading position trails behind each aircraft. |
+| **🛬 Ground** | Show or hide aircraft on the ground (hidden by default). |
+| **🎯 Track this aircraft** | Lock onto the selected plane — homing line, pulsing ring, pinned details. Tap again to release. |
 | **Demo mode** | Runs a simulated fleet (incl. a military & an emergency aircraft) — works offline. |
 | **Click a blip** | Opens the **Contact** readout for that aircraft. |
 
