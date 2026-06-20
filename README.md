@@ -16,7 +16,11 @@ R4D4RVU centers a vintage CRT-style radar scope on your location and plots every
 - **Your location, your sky** — uses the browser Geolocation API to center the scope on you (or set coordinates manually).
 - **Live data, no key** — pulls aircraft near you from [airplanes.live](https://airplanes.live) and converts each position into a bearing + distance blip.
 - **Phosphor fade** — blips flare bright as the sweep passes their bearing, then dim like a real radar tube.
-- **Click any contact** — see callsign, ICAO24 (hex), type & registration, altitude, ground speed, heading, vertical speed, and range/bearing.
+- **Rich contact info on click** — callsign, **airline name & route (origin → destination)** via [adsbdb](https://www.adsbdb.com), a **real photo** of the aircraft via [planespotters.net](https://www.planespotters.net), plus ICAO24 hex, type & registration, altitude, speed, heading, vertical speed, squawk, and range/bearing.
+- **Altitude colour-coding** — blips are coloured by altitude band (ground · <10k · 10–20k · 20–30k · 30k+) with a legend.
+- **Emergency & military highlighting** — aircraft squawking 7500/7600/7700 flash **red**; military aircraft are ringed and labelled in **orange**.
+- **Scope HUD** — live closest / highest / fastest aircraft, plus an **"overhead" alert** when a plane passes within 1.5 mi of you.
+- **Sonar ping & trails** — optional retro 'ping' as the sweep passes each contact (pitch rises with altitude), and fading breadcrumb trails showing each plane's recent track.
 - **Miles** — selectable range of 15, 30, 60, 150, or 300 miles.
 - **Demo mode** — a simulated fleet so it works offline or with location disabled.
 
@@ -54,7 +58,9 @@ Because the whole app is a single `index.html` at the repo root:
 | **Pause / Resume** | Freezes the sweep and data polling. |
 | **⚙ Set location manually** | Type latitude/longitude if you'd rather not share GPS. |
 | **Save & connect** | Stores your manual coordinates and goes live. |
-| **Demo mode** | Runs a simulated fleet — works offline. |
+| **🔊 Ping** | Toggles a sonar beep as the sweep passes each contact (off by default). |
+| **✦ Trails** | Toggles fading position trails behind each aircraft. |
+| **Demo mode** | Runs a simulated fleet (incl. a military & an emergency aircraft) — works offline. |
 | **Click a blip** | Opens the **Contact** readout for that aircraft. |
 
 The **Status** panel shows mode, contact count, range, your position, last update, and a countdown to the next refresh.
