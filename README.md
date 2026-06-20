@@ -21,7 +21,7 @@ R4D4RVU centers a vintage CRT-style radar scope on your location and plots every
 - **Threat & responder highlighting** — emergency squawks (7500/7600/7700) flash **pink**; **military, police, coast guard, fire, and medical/first-responder** aircraft are **bright red** with a ring; **government / customs / border** aircraft are **purple**. Classification combines the ADS-B military flag with the aircraft's registered operator (looked up via adsbdb, cached and rate-limited) plus a fast anchored-callsign pass, so it's based on who actually operates the aircraft rather than guesswork.
 - **Type-specific symbols** — jets get a winged silhouette, light aircraft a small triangle, helicopters a rotor glyph, drones a diamond, gliders a slim dart, and ground vehicles a square (from the ADS-B emitter category).
 - **Hide ground traffic** — declutter the scope by hiding parked/taxiing aircraft (on by default); the contact count shows how many are hidden, e.g. `9 (+14 gnd)`.
-- **Offline mode (SDR)** — point it at a local RTL-SDR dongle (via `dump1090-fa` or `readsb`) for a fully self-contained radar with no internet.
+- **RTL-SDR dongle support** — decode a plugged-in RTL-SDR **directly in the browser** over WebUSB (Chrome/Edge, experimental), or feed a local `dump1090-fa`/`readsb` for a fully offline radar. One-command Docker stack and double-click launchers included.
 - **Works on mobile** — responsive layout, finger-sized tap targets, and the circle is sized to fit your screen; tap any blip for details.
 - **Track a plane** — lock onto any aircraft and the scope draws a homing line and a pulsing ring that follow it, with its details pinned in the panel even across refreshes (shows "signal lost" if it leaves coverage).
 - **Scope HUD** — live closest / highest / fastest aircraft, plus an **"overhead" alert** when a plane passes within 1.5 mi of you.
@@ -96,7 +96,7 @@ docker compose up -d
 # open http://localhost:8078/  — launches straight into SDR mode
 ```
 
-This brings up **readsb** (decoding the dongle) plus an **nginx** that serves the app and proxies the feed same-origin, so the browser reads `aircraft.json` with no CORS or mixed-content issues. Already running **dump1090-fa / PiAware / tar1090**? Use the installer instead:
+Prefer zero install? In desktop Chrome/Edge you can also plug the dongle straight into the hosted site: **⚙ → Data source → RTL-SDR (USB)** decodes ADS-B in the browser via WebUSB (experimental). The Docker stack above brings up **readsb** plus an **nginx** that serves the app and proxies the feed same-origin (no CORS / mixed-content issues), and there are **double-click launchers** (`start-radar.command`/`.bat`/`.sh`) if you'd rather not touch a terminal. Already running **dump1090-fa / PiAware / tar1090**? Use the installer instead:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/RadDad87/R4D4RVU/main/install-on-dump1090fa.sh | sudo bash
@@ -145,6 +145,8 @@ R4D4RVU/
 ├── nginx.conf                  # serves the app + same-origin feed proxy
 ├── .env.example                # receiver location / tuner settings
 ├── install-on-dump1090fa.sh    # installer for existing decoders
+├── rtlsdr-webusb.js            # in-browser WebUSB RTL-SDR ADS-B decoder
+├── start-radar.command / .sh / .bat  # double-click launchers
 └── LICENSE                     # MIT
 ```
 

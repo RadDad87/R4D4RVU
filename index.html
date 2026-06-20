@@ -102,6 +102,7 @@
     details summary { padding: 11px 10px; }
   }
 </style>
+<script src="rtlsdr-webusb.js"></script>
 </head>
 <body>
   <header>
@@ -233,8 +234,10 @@
             <select id="source">
               <option value="online">Online — airplanes.live</option>
               <option value="sdr">Local SDR (offline)</option>
+              <option value="usb">RTL-SDR (USB) — in browser, experimental</option>
             </select>
           </div>
+          <p class="hint" id="usbHint" style="display:none;">Plug an RTL-SDR dongle into this computer, then pick it in the browser prompt. Desktop Chrome/Edge only. Set your location below so the scope centers on you. (Experimental — decodes ADS-B in the browser.)</p>
           <div class="field" id="sdrField" style="display:none;">
             <label for="sdrurl">SDR feed URL — dump1090 / readsb aircraft.json</label>
             <input id="sdrurl" type="text" autocomplete="off" placeholder="http://localhost:8080/data/aircraft.json" />
@@ -355,7 +358,7 @@ function loadPrefs() {
     if (typeof p.hideGround === "boolean") state.hideGround = p.hideGround;
     if (p.theme && THEMES[p.theme]) state.theme = p.theme;
     if (p.soundTheme && SOUNDS[p.soundTheme]) state.soundTheme = p.soundTheme;
-    if (p.source === "sdr" || p.source === "online") state.source = p.source;
+    if (p.source === "sdr" || p.source === "online" || p.source === "usb") state.source = p.source;
     if (typeof p.sdrUrl === "string" && p.sdrUrl) state.sdrUrl = p.sdrUrl;
   } catch (e) {}
 }
@@ -378,19 +381,24 @@ const EMERG = { "7500": "hijack", "7600": "radio fail", "7700": "emergency" };
 const RESP_RE = /^(NPAS|POLICE|POL[0-9]|HEMS|HELIMED|MEDEVAC|MEDIVAC|LIFEGUARD|LIFEGRD|LIFEFLIGHT|COASTGUARD|USCG|CG[0-9]|RESCUE|RESCU|REACH|AIRMED|STARFLIGHT|FIREBIRD|SHERIFF|TROOPER)/;
 async function fetchAircraft() {
   if (!state.origin) return;
-  let url;
-  if (state.source === "sdr") {
-    url = state.sdrUrl;
+  let rows;
+  if (state.source === "usb") {
+    rows = (window.R4SDR && window.R4SDR.supported) ? window.R4SDR.getAircraft() : [];
   } else {
-    const nm = Math.min(Math.round(state.rangeKm / KM_PER_NM) + 2, 250);
-    url = CFG.dataUrl + state.origin.lat.toFixed(4) + "/" + state.origin.lon.toFixed(4) + "/" + nm;
+    let url;
+    if (state.source === "sdr") {
+      url = state.sdrUrl;
+    } else {
+      const nm = Math.min(Math.round(state.rangeKm / KM_PER_NM) + 2, 250);
+      url = CFG.dataUrl + state.origin.lat.toFixed(4) + "/" + state.origin.lon.toFixed(4) + "/" + nm;
+    }
+    let res;
+    try { res = await fetch(url, { signal: AbortSignal.timeout(10000) }); }
+    catch (e) { setMode("error", state.source === "sdr" ? "SDR unreachable" : "Network error"); return; }
+    if (!res.ok) { setMode("error", "Data " + res.status); return; }
+    let data; try { data = await res.json(); } catch (e) { setMode("error", "Bad data"); return; }
+    rows = data.aircraft || data.ac || [];
   }
-  let res;
-  try { res = await fetch(url, { signal: AbortSignal.timeout(10000) }); }
-  catch (e) { setMode("error", state.source === "sdr" ? "SDR unreachable" : "Network error"); return; }
-  if (!res.ok) { setMode("error", "Data " + res.status); return; }
-  let data; try { data = await res.json(); } catch (e) { setMode("error", "Bad data"); return; }
-  const rows = data.aircraft || data.ac || [];
   const now = Date.now();
   const list = [];
   for (const a of rows) {
@@ -507,7 +515,7 @@ function updateReadout() {
   els.count.textContent = _v.length + (state.hideGround && _g ? " (+" + _g + " gnd)" : "");
   els.range.textContent = state.rangeMi + " mi";
   els.pos.textContent = state.origin ? state.origin.lat.toFixed(3) + ", " + state.origin.lon.toFixed(3) : "—";
-  if (els.src) els.src.textContent = state.source === "sdr" ? "Local SDR" : "airplanes.live";
+  if (els.src) els.src.textContent = state.source === "usb" ? "RTL-SDR (USB)" : (state.source === "sdr" ? "Local SDR" : "airplanes.live");
   els.updated.textContent = state.lastFetch ? new Date(state.lastFetch).toLocaleTimeString() : "—";
   updateStats();
   if (state.tracked) state.selected = state.tracked;
@@ -879,11 +887,23 @@ els.demo.addEventListener("click", () => {
   if (!state.origin) state.origin = { lat: 51.4700, lon: -0.4543 };
   setMode("demo"); seedDemo(); updateReadout();
 });
-els.source.addEventListener("change", () => {
+els.source.addEventListener("change", async () => {
   state.source = els.source.value;
   els.sdrField.style.display = state.source === "sdr" ? "block" : "none";
+  const uh = document.getElementById("usbHint"); if (uh) uh.style.display = state.source === "usb" ? "block" : "none";
   savePrefs(); updateReadout();
-  if (state.origin) { setMode("live"); tick(true); }
+  if (state.source === "usb") {
+    if (!window.R4SDR || !window.R4SDR.supported) { setMode("error", "WebUSB needs desktop Chrome/Edge"); return; }
+    if (!state.origin) requestLocation();
+    try {
+      await window.R4SDR.start(s => {
+        if (s === "decoding") { setMode("live"); if (els.src) els.src.textContent = "RTL-SDR (USB)"; }
+        else if (/error|unsupported|could not|no dongle|WebUSB|claim/i.test(s)) { setMode("error", s); }
+        else { if (els.src) els.src.textContent = s; }
+      });
+      tick(true);
+    } catch (e) {}
+  } else if (state.origin) { setMode("live"); tick(true); }
 });
 els.sdrUrlInput.addEventListener("change", () => {
   if (els.sdrUrlInput.value.trim()) state.sdrUrl = els.sdrUrlInput.value.trim();
@@ -909,7 +929,7 @@ function useFallbackLocation() {
 async function tick(force) {
   if (state.mode === "demo") return;
   if (!state.origin) return;
-  if (!force && Date.now() < state.nextFetch) return;
+  if (state.source !== "usb" && !force && Date.now() < state.nextFetch) return;
   state.nextFetch = Date.now() + CFG.refreshMs;
   try { await fetchAircraft(); } catch (e) { setMode("error", "fetch"); }
 }
@@ -923,7 +943,7 @@ function boot() {
     if ([15,30,60,150,300].includes(qr)) { state.rangeMi = qr; state.rangeKm = qr * KM_PER_MI; els.rangeSel.value = String(qr); }
     const qt = q.get("track");
     if (qt) { state.tracked = qt; state.selected = qt; }
-    const qsrc = q.get("source"); if (qsrc === "sdr" || qsrc === "online") state.source = qsrc;
+    const qsrc = q.get("source"); if (qsrc === "sdr" || qsrc === "online" || qsrc === "usb") state.source = qsrc;
     const qsdr = q.get("sdr"); if (qsdr) state.sdrUrl = qsdr;
   } catch (e) {}
   applyTheme(state.theme);

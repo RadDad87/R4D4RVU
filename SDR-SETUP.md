@@ -5,7 +5,25 @@ path that matches your situation.
 
 ---
 
-## Option A — One-command Docker stack (recommended)
+## Option A — In-browser, nothing installed (WebUSB) ✨
+
+The simplest possible path: just open the hosted radar and plug in a dongle.
+
+1. Use **desktop Chrome or Edge** (WebUSB isn't available in Safari/Firefox or on phones).
+2. Plug your RTL-SDR (R820T/R820T2) into the computer.
+3. Open https://raddad87.github.io/R4D4RVU/ → **⚙ → Data source → "RTL-SDR (USB) — in browser"**.
+4. Pick your dongle in the browser's USB prompt. It decodes ADS-B right in the page.
+5. Set your location once in the same gear menu so the scope centers on you.
+
+**Experimental**, and with real caveats: Chrome/Edge desktop only; on **Linux** you may need to unload the kernel driver once so the browser can claim the device:
+```bash
+sudo modprobe -r dvb_usb_rtl28xxu
+```
+and close any other SDR app using the dongle. If WebUSB won't cooperate, use Option B — it's bulletproof.
+
+---
+
+## Option B — One-command Docker stack (rock solid)
 
 Best if you have a dongle and Docker but no decoder yet. This brings up the
 decoder (**readsb**) and the radar together, wired so the browser can read the
@@ -22,6 +40,7 @@ feed offline.
    ```bash
    docker compose up -d
    ```
+   …or just **double-click a launcher** (no terminal): `start-radar.command` (macOS), `start-radar.bat` (Windows), or `start-radar.sh` (Linux). It copies `.env`, brings the stack up, and opens the radar.
 5. Open **http://localhost:8078/** (or `http://<host-ip>:8078/`). It launches straight
    into **Local SDR** mode. Open the in-app gear once and set your latitude/longitude
    so the scope is centered on you (saved in the browser).
@@ -35,7 +54,7 @@ in `docker-compose.yml` and visit `http://localhost:8080/`.
 
 ---
 
-## Option B — You already run dump1090-fa / PiAware / tar1090
+## Option C — You already run dump1090-fa / PiAware / tar1090
 
 Drop the app next to your existing decoder's web UI so it's served same-origin:
 
@@ -49,7 +68,7 @@ Then set your location once in the in-app gear.
 
 ---
 
-## Option C — Point the hosted app at your feed manually
+## Option D — Point the hosted app at your feed manually
 
 If your feed already sends permissive CORS headers, you can use the public site:
 open https://raddad87.github.io/R4D4RVU/, go to **⚙ → Data source → Local SDR**, and
