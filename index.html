@@ -152,6 +152,7 @@
           <span class="k">Your pos</span><span class="v" id="st-pos">—</span>
           <span class="k">Updated</span><span class="v" id="st-updated">—</span>
           <span class="k">Next ping</span><span class="v" id="st-next">—</span>
+          <span class="k">Source</span><span class="v" id="st-src">airplanes.live</span>
         </div>
       </div>
       <div class="card" id="detail">
@@ -226,7 +227,19 @@
         </div>
         <details>
           <summary>⚙ Set location manually / options</summary>
-          <p class="hint">Live data from <a href="https://airplanes.live" target="_blank" rel="noopener">airplanes.live</a>; flight routes from <a href="https://www.adsbdb.com" target="_blank" rel="noopener">adsbdb</a>; photos from <a href="https://www.planespotters.net" target="_blank" rel="noopener">planespotters.net</a>. No API key needed.</p>
+          <p class="hint">Online data from <a href="https://airplanes.live" target="_blank" rel="noopener">airplanes.live</a> (routes via adsbdb, photos via planespotters) — or feed a local SDR dongle for fully offline use.</p>
+          <div class="field">
+            <label for="source">Data source</label>
+            <select id="source">
+              <option value="online">Online — airplanes.live</option>
+              <option value="sdr">Local SDR (offline)</option>
+            </select>
+          </div>
+          <div class="field" id="sdrField" style="display:none;">
+            <label for="sdrurl">SDR feed URL — dump1090 / readsb aircraft.json</label>
+            <input id="sdrurl" type="text" autocomplete="off" placeholder="http://localhost:8080/data/aircraft.json" />
+            <p class="hint">Run dump1090-fa or readsb with an RTL-SDR dongle. Because browsers block an https page from reading http://localhost, serve this app from the same machine (open it over http/localhost) so it can reach the feed. Set your receiver location below.</p>
+          </div>
           <div class="row">
             <div class="field"><label for="lat">Latitude</label><input id="lat" type="number" step="0.0001" placeholder="auto" /></div>
             <div class="field"><label for="lon">Longitude</label><input id="lon" type="number" step="0.0001" placeholder="auto" /></div>
@@ -280,14 +293,14 @@ const els = {
   canvas: $("radar"), mode: $("st-mode"), count: $("st-count"), range: $("st-range"),
   pos: $("st-pos"), updated: $("st-updated"), next: $("st-next"), rangeSel: $("range"),
   locate: $("locate"), pause: $("pause"), save: $("save"), demo: $("demo"),
-  sound: $("sound"), trailsBtn: $("trails"), ground: $("ground"), track: $("track"), share: $("share"), trackrow: $("trackrow"), themeBtn: $("theme"), soundThemeBtn: $("soundtheme"), lat: $("lat"), lon: $("lon"), detail: $("detail")
+  sound: $("sound"), trailsBtn: $("trails"), ground: $("ground"), track: $("track"), share: $("share"), trackrow: $("trackrow"), themeBtn: $("theme"), soundThemeBtn: $("soundtheme"), source: $("source"), sdrField: $("sdrField"), sdrUrlInput: $("sdrurl"), src: $("st-src"), lat: $("lat"), lon: $("lon"), detail: $("detail")
 };
 const ctx = els.canvas.getContext("2d");
 const state = {
   rangeMi: 60, rangeKm: 60 * KM_PER_MI, origin: null, aircraft: [], selected: null,
   mode: "demo", paused: false, lastFetch: 0, nextFetch: 0, _screen: [],
   soundOn: false, trailsOn: true, _enrichedFor: null, hideGround: true, tracked: null,
-  theme: "green", soundTheme: "sonar"
+  theme: "green", soundTheme: "sonar", source: "online", sdrUrl: "http://localhost:8080/data/aircraft.json"
 };
 const trails = {};            // icao24 -> [{x,y,t,col}]
 const enrichCache = {};       // icao24 -> {airline,route,photo,credit}
@@ -342,10 +355,12 @@ function loadPrefs() {
     if (typeof p.hideGround === "boolean") state.hideGround = p.hideGround;
     if (p.theme && THEMES[p.theme]) state.theme = p.theme;
     if (p.soundTheme && SOUNDS[p.soundTheme]) state.soundTheme = p.soundTheme;
+    if (p.source === "sdr" || p.source === "online") state.source = p.source;
+    if (typeof p.sdrUrl === "string" && p.sdrUrl) state.sdrUrl = p.sdrUrl;
   } catch (e) {}
 }
 function savePrefs() {
-  localStorage.setItem("r4d4rvu", JSON.stringify({ rangeMi: state.rangeMi, origin: state.origin, trailsOn: state.trailsOn, hideGround: state.hideGround, theme: state.theme, soundTheme: state.soundTheme }));
+  localStorage.setItem("r4d4rvu", JSON.stringify({ rangeMi: state.rangeMi, origin: state.origin, trailsOn: state.trailsOn, hideGround: state.hideGround, theme: state.theme, soundTheme: state.soundTheme, source: state.source, sdrUrl: state.sdrUrl }));
 }
 const R_EARTH = 6371, toRad = d => d * Math.PI / 180, toDeg = r => r * 180 / Math.PI;
 function haversine(a, b) {
@@ -363,14 +378,19 @@ const EMERG = { "7500": "hijack", "7600": "radio fail", "7700": "emergency" };
 const RESP_RE = /^(NPAS|POLICE|POL[0-9]|HEMS|HELIMED|MEDEVAC|MEDIVAC|LIFEGUARD|LIFEGRD|LIFEFLIGHT|COASTGUARD|USCG|CG[0-9]|RESCUE|RESCU|REACH|AIRMED|STARFLIGHT|FIREBIRD|SHERIFF|TROOPER)/;
 async function fetchAircraft() {
   if (!state.origin) return;
-  const nm = Math.min(Math.round(state.rangeKm / KM_PER_NM) + 2, 250);
-  const url = CFG.dataUrl + state.origin.lat.toFixed(4) + "/" + state.origin.lon.toFixed(4) + "/" + nm;
+  let url;
+  if (state.source === "sdr") {
+    url = state.sdrUrl;
+  } else {
+    const nm = Math.min(Math.round(state.rangeKm / KM_PER_NM) + 2, 250);
+    url = CFG.dataUrl + state.origin.lat.toFixed(4) + "/" + state.origin.lon.toFixed(4) + "/" + nm;
+  }
   let res;
   try { res = await fetch(url, { signal: AbortSignal.timeout(10000) }); }
-  catch (e) { setMode("error", "Network error"); return; }
+  catch (e) { setMode("error", state.source === "sdr" ? "SDR unreachable" : "Network error"); return; }
   if (!res.ok) { setMode("error", "Data " + res.status); return; }
   let data; try { data = await res.json(); } catch (e) { setMode("error", "Bad data"); return; }
-  const rows = data.ac || [];
+  const rows = data.aircraft || data.ac || [];
   const now = Date.now();
   const list = [];
   for (const a of rows) {
@@ -487,6 +507,7 @@ function updateReadout() {
   els.count.textContent = _v.length + (state.hideGround && _g ? " (+" + _g + " gnd)" : "");
   els.range.textContent = state.rangeMi + " mi";
   els.pos.textContent = state.origin ? state.origin.lat.toFixed(3) + ", " + state.origin.lon.toFixed(3) : "—";
+  if (els.src) els.src.textContent = state.source === "sdr" ? "Local SDR" : "airplanes.live";
   els.updated.textContent = state.lastFetch ? new Date(state.lastFetch).toLocaleTimeString() : "—";
   updateStats();
   if (state.tracked) state.selected = state.tracked;
@@ -858,6 +879,17 @@ els.demo.addEventListener("click", () => {
   if (!state.origin) state.origin = { lat: 51.4700, lon: -0.4543 };
   setMode("demo"); seedDemo(); updateReadout();
 });
+els.source.addEventListener("change", () => {
+  state.source = els.source.value;
+  els.sdrField.style.display = state.source === "sdr" ? "block" : "none";
+  savePrefs(); updateReadout();
+  if (state.origin) { setMode("live"); tick(true); }
+});
+els.sdrUrlInput.addEventListener("change", () => {
+  if (els.sdrUrlInput.value.trim()) state.sdrUrl = els.sdrUrlInput.value.trim();
+  savePrefs();
+  if (state.source === "sdr" && state.origin) { setMode("live"); tick(true); }
+});
 function requestLocation() {
   if (!navigator.geolocation) { useFallbackLocation(); return; }
   navigator.geolocation.getCurrentPosition(
@@ -893,6 +925,9 @@ function boot() {
     if (qt) { state.tracked = qt; state.selected = qt; }
   } catch (e) {}
   applyTheme(state.theme);
+  els.source.value = state.source;
+  els.sdrUrlInput.value = state.sdrUrl;
+  els.sdrField.style.display = state.source === "sdr" ? "block" : "none";
   els.trailsBtn.textContent = "✦ Trails: " + (state.trailsOn ? "on" : "off");
   els.ground.textContent = "🛬 Ground: " + (state.hideGround ? "hidden" : "shown");
   els.ground.classList.toggle("active", state.hideGround);
