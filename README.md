@@ -66,7 +66,11 @@ docker compose up -d     # or double-click start-radar.command / .bat / .sh
 # open http://localhost:8078/
 ```
 
-Full instructions (Docker, in-browser WebUSB, existing dump1090-fa installs) are in **[SDR-SETUP.md](SDR-SETUP.md)**. Local SDR mode works with **any** decoder that outputs `aircraft.json` — RTL-SDR, **HackRF One** (e.g. dump1090_sdrplus or readsb+SoapyHackRF), Airspy, SDRplay, and more. A PortaPack **H4M** running Mayhem decodes on-device; to feed the radar, connect its HackRF to a computer and run a host decoder.
+Thorough step-by-step instructions for every path — RTL-SDR (in-browser / Docker / existing decoder), **HackRF One** & PortaPack, antenna tips, driver setup (Zadig / `modprobe`), and troubleshooting — are in **[SDR-SETUP.md](SDR-SETUP.md)**. Local SDR mode works with **any** decoder that outputs `aircraft.json` — RTL-SDR, **HackRF One** (e.g. dump1090_sdrplus or readsb+SoapyHackRF), Airspy, SDRplay, and more. A PortaPack **H4M** running Mayhem decodes on-device; to feed the radar, connect its HackRF to a computer and run a host decoder.
+
+### Run it fully offline / from an SSD
+
+The in-browser RTL-SDR decoder's libraries are **vendored in the repo** (`rtlsdr.bundle.js`, `mode-s-demodulator.bundle.js`), so it decodes your dongle with **no internet**. Copy the folder to a USB stick or SSD, double-click **`serve-offline.command` / `.bat` / `.sh`** (it serves over `http://localhost` — which WebUSB requires — using Python or Node), plug in the dongle, and pick **RTL-SDR (USB)** or **Local SDR**. Everything on the scope works offline; only the airline/route/photo lookups need a connection. See **Path F** in [SDR-SETUP.md](SDR-SETUP.md).
 
 ---
 
@@ -117,12 +121,15 @@ const CFG = {
 R4D4RVU/
 ├── index.html                  # the entire app (HTML + CSS + JS)
 ├── rtlsdr-webusb.js            # in-browser WebUSB RTL-SDR ADS-B decoder
+├── rtlsdr.bundle.js            # vendored RTL-SDR driver (offline, no CDN)
+├── mode-s-demodulator.bundle.js# vendored ADS-B demodulator (offline)
 ├── docker-compose.yml          # one-command readsb + radar stack
 ├── nginx.conf                  # serves the app + same-origin feed proxy
 ├── .env.example                # receiver location / tuner settings
-├── start-radar.command/.sh/.bat# double-click launchers
+├── start-radar.command/.sh/.bat# double-click launchers (Docker stack)
+├── serve-offline.command/.sh/.bat # local static server for offline/SSD use
 ├── install-on-dump1090fa.sh    # installer for existing decoders
-├── SDR-SETUP.md                # offline / RTL-SDR setup guide
+├── SDR-SETUP.md                # full SDR + offline setup guide
 ├── screenshot-radar.jpg        # screenshot
 ├── README.md                   # this file
 └── LICENSE                     # MIT

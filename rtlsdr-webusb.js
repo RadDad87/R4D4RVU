@@ -20,8 +20,12 @@
   var _mods = {}, _cache = {}, RtlSdr = null, Demodulator = null;
 
   // Load the CommonJS rtlsdrjs files and wire them together with a tiny require shim.
+  function loadScript(src){ return new Promise(function(res,rej){ var sc=document.createElement("script"); sc.src=src; sc.onload=res; sc.onerror=function(){rej(new Error("load "+src));}; document.head.appendChild(sc); }); }
   async function loadRtlSdr() {
     if (RtlSdr) return RtlSdr;
+    if (window.RtlSdr) { RtlSdr = window.RtlSdr; return RtlSdr; }
+    // Prefer the local vendored bundle (works fully offline); fall back to CDN.
+    try { await loadScript("./rtlsdr.bundle.js"); if (window.RtlSdr) { RtlSdr = window.RtlSdr; return RtlSdr; } } catch (e) {}
     var srcs = {};
     await Promise.all(Object.keys(FILES).map(async function (k) {
       var r = await fetch(GH + FILES[k]);
@@ -43,6 +47,7 @@
 
   async function loadDemod() {
     if (Demodulator) return Demodulator;
+    try { var lm = await import("./mode-s-demodulator.bundle.js"); Demodulator = lm.default || lm; if (Demodulator) return Demodulator; } catch (e) {}
     var m = await import("https://esm.sh/mode-s-demodulator@1");
     Demodulator = m.default || m;
     return Demodulator;
