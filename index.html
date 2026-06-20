@@ -401,6 +401,7 @@ async function fetchAircraft() {
     rows = data.aircraft || data.ac || [];
   }
   const now = Date.now();
+  const prevById = new Map(state.aircraft.map(a => [a.icao24, a]));
   const list = [];
   for (const a of rows) {
     if (a.lat == null || a.lon == null) continue;
@@ -423,8 +424,20 @@ async function fetchAircraft() {
       baro_alt: alt, squawk: sq, emergency: !!EMERG[sq],
       mil: (dbf & 1) === 1, responder: responder, gov: (dbf & 14) !== 0,
       category: a.category || null,
-      dist, brg: bearing(state.origin, pos), seen: now
+      dist, brg: bearing(state.origin, pos), seen: now,
+      _pt: (a.pt != null ? a.pt : null)
     });
+  }
+  // USB/HackRF: decoder only updates a fix every few seconds. Keep the smoothly
+  // dead-reckoned position between fixes and only snap when a NEW fix arrives,
+  // so blips glide instead of jumping back each poll.
+  if (state.source === "usb" || state.source === "hackrf") {
+    for (const it of list) {
+      const ex = prevById.get(it.icao24);
+      if (ex && it._pt != null && ex._pt === it._pt) {
+        it.lat = ex.lat; it.lon = ex.lon; it.dist = ex.dist; it.brg = ex.brg;
+      }
+    }
   }
   list.sort((a, b) => a.dist - b.dist);
   applyOpClass(list);
