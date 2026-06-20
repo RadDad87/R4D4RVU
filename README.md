@@ -20,6 +20,7 @@ R4D4RVU centers a vintage CRT-style radar scope on your location and plots every
 - **Altitude colour-coding** — blips are coloured by altitude band (ground · <10k · 10–20k · 20–30k · 30k+) with a legend.
 - **Emergency, military & government highlighting** — emergency squawks (7500/7600/7700) flash **red**; **military** aircraft are ringed **orange**; **government / special** aircraft (privacy-address, LADD, and flagged operators) are ringed **purple**.
 - **Hide ground traffic** — declutter the scope by hiding parked/taxiing aircraft (on by default); the contact count shows how many are hidden, e.g. `9 (+14 gnd)`.
+- **Works on mobile** — responsive layout, finger-sized tap targets, and the circle is sized to fit your screen; tap any blip for details.
 - **Track a plane** — lock onto any aircraft and the scope draws a homing line and a pulsing ring that follow it, with its details pinned in the panel even across refreshes (shows "signal lost" if it leaves coverage).
 - **Scope HUD** — live closest / highest / fastest aircraft, plus an **"overhead" alert** when a plane passes within 1.5 mi of you.
 - **Sonar ping & trails** — optional retro 'ping' as the sweep passes each contact (pitch rises with altitude), and fading breadcrumb trails showing each plane's recent track.
