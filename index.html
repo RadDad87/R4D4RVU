@@ -63,7 +63,10 @@
   button:hover { background: #086c39; box-shadow: 0 0 12px rgba(54,255,139,0.35); }
   button.ghost { background: #021109; }
   .field { margin-bottom: 10px; }
-  details summary { cursor: pointer; color: var(--green-dim); font-size: 0.72rem; letter-spacing: 1px; margin-bottom: 8px; }
+  details summary { cursor: pointer; color: var(--green); font-size: 0.8rem; letter-spacing: 1px; margin-bottom: 8px; padding: 9px 10px; border: 1px solid var(--green-dim); border-radius: 6px; background: #05311b; text-align: center; list-style: none; }
+  details summary::-webkit-details-marker { display: none; }
+  details summary:hover { background: #086c39; box-shadow: 0 0 12px rgba(54,255,139,0.35); }
+  details[open] summary { margin-bottom: 12px; background: #021109; }
   .hint { font-size: 0.66rem; color: var(--green-dim); line-height: 1.4; margin-top: 6px; }
   a { color: var(--green); }
   #detail { display: block; } #detail.show { border-color: var(--green-dim); }
@@ -123,7 +126,7 @@ canvas#radar { cursor: crosshair; }
           <button id="pause" class="ghost">Pause</button>
         </div>
         <details>
-          <summary>OpenSky credentials &amp; manual position</summary>
+          <summary>⚙ Add OpenSky API keys (import JSON)</summary>
           <div class="field"><label for="cid">OpenSky client_id</label><input id="cid" type="text" autocomplete="off" placeholder="your-api-client" /></div>
           <div class="field"><label for="csec">OpenSky client_secret</label><input id="csec" type="password" autocomplete="off" placeholder="********" /></div>
           <div class="field" style="margin-bottom:6px;"><button id="importBtn" class="ghost" type="button" style="width:100%;">&uarr; Import OpenSky JSON file</button><input id="importFile" type="file" accept=".json,application/json" style="display:none" /></div>
