@@ -11,7 +11,7 @@
     --green-faint: rgba(54, 255, 139, 0.18); --amber: #ffd166; --red: #ff5d5d;
     --text: #b8ffd4; --mono: "SF Mono", "JetBrains Mono", "Fira Code", Consolas, "Courier New", monospace;
   }
-  * { box-sizing: border-box; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body {
     margin: 0; padding: 0;
     background: radial-gradient(circle at 50% 0%, #07241400, #010a06 70%), var(--bg);
@@ -25,9 +25,9 @@
   header h1 { font-size: 1.4rem; letter-spacing: 4px; margin: 0; color: var(--green); text-shadow: 0 0 8px rgba(54,255,139,0.5); }
   header .tag { font-size: 0.7rem; color: var(--green-dim); letter-spacing: 2px; }
   .layout { width: 100%; max-width: 1120px; display: flex; gap: 24px; flex-wrap: wrap; justify-content: center; align-items: flex-start; }
-  .scope-wrap { position: relative; width: min(94vw, 720px); aspect-ratio: 1 / 1; flex: 1 1 460px; min-width: 300px; max-width: 720px; align-self: flex-start; }
+  .scope-wrap { position: relative; width: min(94vw, 86vh, 720px); aspect-ratio: 1 / 1; flex: 1 1 460px; min-width: 280px; max-width: 720px; align-self: flex-start; }
   canvas#radar {
-    width: 100%; height: 100%; display: block; border-radius: 50%; cursor: crosshair;
+    width: 100%; height: 100%; display: block; border-radius: 50%; cursor: crosshair; touch-action: manipulation;
     background: radial-gradient(circle at 50% 50%, #053a1d 0%, #021c0d 60%, #001206 100%);
     box-shadow: 0 0 0 6px #04150b, 0 0 0 8px rgba(54,255,139,0.25), 0 0 40px rgba(54,255,139,0.18) inset, 0 0 50px rgba(0,0,0,0.8);
   }
@@ -67,6 +67,21 @@
   .legend i { display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:4px; vertical-align:middle; box-shadow:0 0 5px currentColor; }
   #overhead { display:none; margin-top:8px; font-size:0.72rem; color:var(--amber); letter-spacing:1px; }
   footer { font-size: 0.66rem; color: var(--green-dim); letter-spacing: 1px; text-align: center; max-width: 1120px; }
+  @media (max-width: 680px) {
+    body { padding: 10px 8px 28px; gap: 12px; }
+    header { padding-bottom: 8px; }
+    header h1 { font-size: 1.15rem; letter-spacing: 3px; }
+    header .tag { font-size: 0.58rem; letter-spacing: 1px; }
+    .layout { gap: 14px; }
+    .scope-wrap { flex-basis: 100%; width: min(96vw, 70vh); max-width: 96vw; }
+    .panel { flex-basis: 100%; max-width: 100%; min-width: 0; width: 100%; }
+    .card { padding: 11px 12px; }
+    .readout { font-size: 0.85rem; }
+    input, select, button { font-size: 0.85rem; padding: 10px 10px; }
+    button { min-height: 44px; }
+    .legend { font-size: 0.6rem; gap: 8px; }
+    details summary { padding: 11px 10px; }
+  }
 </style>
 </head>
 <body>
@@ -404,6 +419,8 @@ async function enrichSelected(a) {
   if (my === enrichSeq && state.selected === a.icao24) showEnrich(c);
 }
 const SIZE = 1040, C = SIZE / 2, RR = SIZE / 2 - 40;
+const SMALL = Math.min(window.innerWidth, window.innerHeight) < 640;
+const HIT = (window.matchMedia && matchMedia("(pointer: coarse)").matches) ? 85 : 55;
 let sweepAngle = 0, lastFrame = performance.now();
 function planeXY(a) {
   const f = Math.min(a.dist / state.rangeKm, 1);
@@ -503,10 +520,10 @@ function drawBlips(now) {
     ctx.restore(); ctx.shadowBlur = 0;
     const lc = sel ? [255,225,150] : col;
     ctx.fillStyle = "rgba(" + lc[0] + "," + lc[1] + "," + lc[2] + "," + (0.45+glow*0.5) + ")";
-    ctx.font = (sel ? "bold " : "") + "23px monospace";
+    ctx.font = (sel ? "bold " : "") + (SMALL ? 30 : 23) + "px monospace";
     ctx.fillText(a.callsign, p.x + 13, p.y - 7);
     if (sel || glow > 0.7) {
-      ctx.fillStyle = "rgba(" + lc[0] + "," + lc[1] + "," + lc[2] + "," + (0.3+glow*0.4) + ")"; ctx.font = "18px monospace";
+      ctx.fillStyle = "rgba(" + lc[0] + "," + lc[1] + "," + lc[2] + "," + (0.3+glow*0.4) + ")"; ctx.font = (SMALL ? 23 : 18) + "px monospace";
       ctx.fillText(fmtAlt(a.baro_alt), p.x + 13, p.y + 13);
     }
   }
@@ -574,13 +591,13 @@ els.canvas.addEventListener("mousemove", e => {
   const r = els.canvas.getBoundingClientRect();
   const x = (e.clientX - r.left) * (SIZE / r.width), y = (e.clientY - r.top) * (SIZE / r.height);
   let over = false;
-  for (const s2 of (state._screen || [])) { if (Math.hypot(s2.x - x, s2.y - y) < 55) { over = true; break; } }
+  for (const s2 of (state._screen || [])) { if (Math.hypot(s2.x - x, s2.y - y) < HIT) { over = true; break; } }
   els.canvas.style.cursor = over ? "pointer" : "crosshair";
 });
 els.canvas.addEventListener("click", e => {
   const r = els.canvas.getBoundingClientRect();
   const x = (e.clientX - r.left) * (SIZE / r.width), y = (e.clientY - r.top) * (SIZE / r.height);
-  let best = null, bd = 55;
+  let best = null, bd = HIT;
   for (const s of (state._screen || [])) { const d = Math.hypot(s.x - x, s.y - y); if (d < bd) { bd = d; best = s.icao24; } }
   if (best) { state.selected = best; if (state.tracked) state.tracked = best; }
   else if (!state.tracked) { state.selected = null; }
