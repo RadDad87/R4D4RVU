@@ -188,7 +188,7 @@ const state = {
 };
 const trails = {};            // icao24 -> [{x,y,t,col}]
 const enrichCache = {};       // icao24 -> {airline,route,photo,credit}
-let audioCtx = null, lastPing = 0, sweepPrev = 0;
+let audioCtx = null, lastPing = 0, sweepPrev = 0, sonarDelay = null, sonarWet = null;
 
 function loadPrefs() {
   try {
@@ -516,23 +516,29 @@ function drawBlips(now) {
   state._screen = _vis.map(a => { const p = planeXY(a); return { icao24: a.icao24, x: p.x, y: p.y }; });
 }
 function crossed(prev, cur, b) { return prev <= cur ? (b > prev && b <= cur) : (b > prev || b <= cur); }
-function ensureAudio() { if (!audioCtx) { try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch(e){} } }
+function ensureAudio() {
+  if (audioCtx) return;
+  try {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    sonarDelay = audioCtx.createDelay(1.5); sonarDelay.delayTime.value = 0.26;   // echo spacing
+    const fb = audioCtx.createGain(); fb.gain.value = 0.36;                       // fading repeats
+    sonarWet = audioCtx.createGain(); sonarWet.gain.value = 0.55;                 // echo level
+    sonarDelay.connect(fb); fb.connect(sonarDelay);
+    sonarDelay.connect(sonarWet); sonarWet.connect(audioCtx.destination);
+  } catch (e) {}
+}
 function ping(freq, dur, vol) {
   if (!state.soundOn || !audioCtx) return;
-  const t = audioCtx.currentTime, tail = dur || 0.9;
-  const o = audioCtx.createOscillator(), o2 = audioCtx.createOscillator();
-  const g = audioCtx.createGain(), g2 = audioCtx.createGain();
-  o.type = "sine"; o2.type = "sine";
-  o.frequency.setValueAtTime(freq, t);
-  o.frequency.exponentialRampToValueAtTime(freq * 0.62, t + tail * 0.6);   // downward glide
-  o2.frequency.setValueAtTime(freq * 2.01, t);                            // faint metallic harmonic
-  o2.frequency.exponentialRampToValueAtTime(freq * 1.25, t + tail * 0.6);
-  g2.gain.value = 0.16;
+  const t = audioCtx.currentTime, len = dur || 0.32;
+  const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+  o.type = "sine"; o.frequency.value = freq;                  // steady high tone — the "blip"
   g.gain.setValueAtTime(0.0001, t);
-  g.gain.exponentialRampToValueAtTime(vol, t + 0.01);                     // sharp attack
-  g.gain.exponentialRampToValueAtTime(0.0001, t + tail);                  // long reverberant tail
-  o.connect(g); o2.connect(g2); g2.connect(g); g.connect(audioCtx.destination);
-  o.start(t); o2.start(t); o.stop(t + tail + 0.05); o2.stop(t + tail + 0.05);
+  g.gain.exponentialRampToValueAtTime(vol, t + 0.006);        // sharp attack
+  g.gain.exponentialRampToValueAtTime(0.0001, t + len);       // clean decay
+  o.connect(g);
+  g.connect(audioCtx.destination);                            // dry blip
+  if (sonarDelay) g.connect(sonarDelay);                      // submarine echo trail
+  o.start(t); o.stop(t + len + 0.02);
 }
 function frame(t) {
   const dt = t - lastFrame; lastFrame = t; const now = Date.now();
@@ -545,8 +551,8 @@ function frame(t) {
       if (p - lastPing > 650) {
         for (const a of state.aircraft) {
           if (crossed(sweepPrev, sweepAngle, a.brg)) {
-            const f = a.emergency ? 1500 : (a.icao24 === state.selected ? 1240 : 760 + Math.min(360, (a.baro_alt||0)/120));
-            ping(f, 0.95, a.emergency ? 0.12 : 0.06); lastPing = p; break;
+            const f = a.emergency ? 1600 : (a.icao24 === state.selected ? 1320 : 1050 + Math.min(280, (a.baro_alt||0)/160));
+            ping(f, 0.32, a.emergency ? 0.10 : 0.06); lastPing = p; break;
           }
         }
       }
@@ -586,7 +592,7 @@ els.locate.addEventListener("click", requestLocation);
 els.pause.addEventListener("click", () => { state.paused = !state.paused; els.pause.textContent = state.paused ? "Resume" : "Pause"; });
 els.sound.addEventListener("click", () => {
   state.soundOn = !state.soundOn;
-  if (state.soundOn) { ensureAudio(); if (audioCtx && audioCtx.state === "suspended") audioCtx.resume(); ping(820, 0.95, 0.06); }
+  if (state.soundOn) { ensureAudio(); if (audioCtx && audioCtx.state === "suspended") audioCtx.resume(); ping(1100, 0.32, 0.06); }
   els.sound.textContent = (state.soundOn ? "🔊" : "🔇") + " Ping: " + (state.soundOn ? "on" : "off");
 });
 els.trailsBtn.addEventListener("click", () => {
