@@ -252,7 +252,7 @@ const THEMES = {
 };
 const THEME_ORDER = ["green","amber","ice","alert"];
 const SOUNDS = {
-  sonar: { name:"Sonar", type:"sine",     base:1.0,  tail:1.3,  wet:0.28, rise:0.94 },
+  sonar: { name:"Sonar", type:"sine",     base:0.9,  tail:1.45, wet:0.30, rise:0.97 },
   sub:   { name:"Sub",   type:"sine",     base:0.6,  tail:1.9,  wet:0.42, rise:0.9 },
   blip:  { name:"Blip",  type:"triangle", base:1.5,  tail:0.13, wet:0.0,  rise:1.0 },
   soft:  { name:"Soft",  type:"sine",     base:0.85, tail:0.5,  wet:0.12, rise:1.0 }
@@ -639,16 +639,30 @@ function ping(freq, _dur, vol) {
   if (!state.soundOn || !audioCtx) return;
   const sd = SOUNDS[state.soundTheme] || SOUNDS.sonar;
   const t = audioCtx.currentTime, len = sd.tail, f = freq * sd.base;
-  const o = audioCtx.createOscillator(), g = audioCtx.createGain();
-  o.type = sd.type;
-  o.frequency.setValueAtTime(f * sd.rise, t);
-  o.frequency.exponentialRampToValueAtTime(f, t + 0.045);
-  g.gain.setValueAtTime(0.0001, t);
-  g.gain.exponentialRampToValueAtTime(vol, t + 0.008);
-  g.gain.exponentialRampToValueAtTime(0.0001, t + len);
-  o.connect(g); g.connect(audioCtx.destination);
-  if (sonarDelay && sd.wet > 0) g.connect(sonarDelay);
-  o.start(t); o.stop(t + len + 0.05);
+  const o1 = audioCtx.createOscillator();   // fundamental
+  const o2 = audioCtx.createOscillator();   // sub-octave for warmth/body
+  const o3 = audioCtx.createOscillator();   // 2nd partial for sheen
+  o1.type = sd.type; o2.type = "sine"; o3.type = "sine";
+  o1.frequency.setValueAtTime(f * sd.rise, t);
+  o1.frequency.exponentialRampToValueAtTime(f, t + 0.05);
+  o2.frequency.value = f * 0.5;
+  o3.frequency.setValueAtTime(f * 2, t);
+  o3.frequency.exponentialRampToValueAtTime(f * 1.985, t + len);
+  const g2 = audioCtx.createGain(), g3 = audioCtx.createGain();
+  g2.gain.value = 0.30; g3.gain.value = 0.11;
+  const lp = audioCtx.createBiquadFilter();   // gentle low-pass that closes as it rings -> rounded sonar tone
+  lp.type = "lowpass"; lp.Q.value = 1.0;
+  lp.frequency.setValueAtTime(Math.min(f * 6, 9000), t);
+  lp.frequency.exponentialRampToValueAtTime(Math.max(f * 1.2, 400), t + len);
+  const env = audioCtx.createGain();
+  env.gain.setValueAtTime(0.0001, t);
+  env.gain.exponentialRampToValueAtTime(vol, t + 0.012);   // soft, non-clicky attack
+  env.gain.exponentialRampToValueAtTime(0.0001, t + len);  // long smooth ring
+  o1.connect(lp); o2.connect(g2); g2.connect(lp); o3.connect(g3); g3.connect(lp);
+  lp.connect(env); env.connect(audioCtx.destination);
+  if (sonarDelay && sd.wet > 0) env.connect(sonarDelay);
+  o1.start(t); o2.start(t); o3.start(t);
+  o1.stop(t + len + 0.06); o2.stop(t + len + 0.06); o3.stop(t + len + 0.06);
 }
 function frame(t) {
   const dt = t - lastFrame; lastFrame = t; const now = Date.now();
@@ -657,13 +671,12 @@ function frame(t) {
     sweepAngle = (sweepAngle + (360 * dt) / CFG.sweepPeriodMs) % 360;
     if (state.mode === "demo") stepDemo(dt);
     if (state.soundOn && state.aircraft.length) {
-      const p = performance.now();
-      if (p - lastPing > 950) {
-        for (const a of state.aircraft) {
-          if (crossed(sweepPrev, sweepAngle, a.brg)) {
-            const f = a.emergency ? 1100 : (a.icao24 === state.selected ? 940 : 720 + Math.min(220, (a.baro_alt||0)/200));
-            ping(f, 1.3, a.emergency ? 0.10 : 0.06); lastPing = p; break;
-          }
+      let fired = 0;
+      for (const a of visList()) {
+        if (crossed(sweepPrev, sweepAngle, a.brg)) {
+          const f = a.emergency ? 1100 : (a.icao24 === state.selected ? 940 : 720 + Math.min(220, (a.baro_alt||0)/200));
+          ping(f, 0, a.emergency ? 0.11 : 0.075);
+          if (++fired >= 4) break;   // safety cap if several align at once
         }
       }
     }
