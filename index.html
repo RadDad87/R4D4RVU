@@ -85,14 +85,6 @@
   .legend i { display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:4px; vertical-align:middle; box-shadow:0 0 5px currentColor; }
   #overhead { display:none; margin-top:8px; font-size:0.72rem; color:var(--amber); letter-spacing:1px; }
   footer { font-size: 0.66rem; color: var(--green-dim); letter-spacing: 1px; text-align: center; max-width: 1120px; }
-  body.light { background: radial-gradient(circle at 50% 0%, #ffffff00, #e7ece8 70%), #eef2ee; color: #14201a; }
-  body.light header { border-color: rgba(0,0,0,0.12); }
-  body.light .card { background: linear-gradient(180deg, #ffffff, #eef3ef); border-color: rgba(0,0,0,0.12); }
-  body.light .readout .k, body.light label, body.light .tag, body.light .hint, body.light footer, body.light details summary { color: #5b6b62; }
-  body.light input, body.light select, body.light button { background: #ffffff; color: #14201a; border-color: rgba(0,0,0,0.18); }
-  body.light button { background: #e6efe9; }
-  body.light button:hover { background: #d3e7da; }
-  body.light details summary { background: #e6efe9; }
   @media (max-width: 680px) {
     body { padding: 10px 8px 28px; gap: 12px; }
     header { padding-bottom: 8px; }
@@ -228,7 +220,6 @@
         </div>
         <div class="row" style="margin-bottom:10px;">
           <button id="theme" class="ghost">🎨 Green</button>
-          <button id="light" class="ghost">◐ Light</button>
         </div>
         <div class="row" style="margin-bottom:10px;">
           <button id="soundtheme" class="ghost">🔉 Sonar</button>
@@ -278,10 +269,6 @@ function applyTheme(key) {
   if (els.canvas) els.canvas.style.background = th.bg;
   if (els.themeBtn) els.themeBtn.textContent = "🎨 " + th.name;
 }
-function applyLight() {
-  document.body.classList.toggle("light", state.light);
-  if (els.lightBtn) els.lightBtn.textContent = state.light ? "◑ Dark" : "◐ Light";
-}
 function applySoundTheme() {
   const sd = SOUNDS[state.soundTheme] || SOUNDS.sonar;
   if (sonarWet) sonarWet.gain.value = sd.wet;
@@ -293,14 +280,14 @@ const els = {
   canvas: $("radar"), mode: $("st-mode"), count: $("st-count"), range: $("st-range"),
   pos: $("st-pos"), updated: $("st-updated"), next: $("st-next"), rangeSel: $("range"),
   locate: $("locate"), pause: $("pause"), save: $("save"), demo: $("demo"),
-  sound: $("sound"), trailsBtn: $("trails"), ground: $("ground"), track: $("track"), share: $("share"), trackrow: $("trackrow"), themeBtn: $("theme"), lightBtn: $("light"), soundThemeBtn: $("soundtheme"), lat: $("lat"), lon: $("lon"), detail: $("detail")
+  sound: $("sound"), trailsBtn: $("trails"), ground: $("ground"), track: $("track"), share: $("share"), trackrow: $("trackrow"), themeBtn: $("theme"), soundThemeBtn: $("soundtheme"), lat: $("lat"), lon: $("lon"), detail: $("detail")
 };
 const ctx = els.canvas.getContext("2d");
 const state = {
   rangeMi: 60, rangeKm: 60 * KM_PER_MI, origin: null, aircraft: [], selected: null,
   mode: "demo", paused: false, lastFetch: 0, nextFetch: 0, _screen: [],
   soundOn: false, trailsOn: true, _enrichedFor: null, hideGround: true, tracked: null,
-  theme: "green", light: false, soundTheme: "sonar"
+  theme: "green", soundTheme: "sonar"
 };
 const trails = {};            // icao24 -> [{x,y,t,col}]
 const enrichCache = {};       // icao24 -> {airline,route,photo,credit}
@@ -314,12 +301,11 @@ function loadPrefs() {
     if (typeof p.trailsOn === "boolean") state.trailsOn = p.trailsOn;
     if (typeof p.hideGround === "boolean") state.hideGround = p.hideGround;
     if (p.theme && THEMES[p.theme]) state.theme = p.theme;
-    if (typeof p.light === "boolean") state.light = p.light;
     if (p.soundTheme && SOUNDS[p.soundTheme]) state.soundTheme = p.soundTheme;
   } catch (e) {}
 }
 function savePrefs() {
-  localStorage.setItem("r4d4rvu", JSON.stringify({ rangeMi: state.rangeMi, origin: state.origin, trailsOn: state.trailsOn, hideGround: state.hideGround, theme: state.theme, light: state.light, soundTheme: state.soundTheme }));
+  localStorage.setItem("r4d4rvu", JSON.stringify({ rangeMi: state.rangeMi, origin: state.origin, trailsOn: state.trailsOn, hideGround: state.hideGround, theme: state.theme, soundTheme: state.soundTheme }));
 }
 const R_EARTH = 6371, toRad = d => d * Math.PI / 180, toDeg = r => r * 180 / Math.PI;
 function haversine(a, b) {
@@ -742,7 +728,6 @@ els.themeBtn.addEventListener("click", () => {
   const i = (THEME_ORDER.indexOf(state.theme) + 1) % THEME_ORDER.length;
   applyTheme(THEME_ORDER[i]); savePrefs();
 });
-els.lightBtn.addEventListener("click", () => { state.light = !state.light; applyLight(); savePrefs(); });
 els.soundThemeBtn.addEventListener("click", () => {
   const i = (SOUND_ORDER.indexOf(state.soundTheme) + 1) % SOUND_ORDER.length;
   state.soundTheme = SOUND_ORDER[i]; applySoundTheme(); savePrefs();
@@ -799,7 +784,7 @@ function boot() {
     const qt = q.get("track");
     if (qt) { state.tracked = qt; state.selected = qt; }
   } catch (e) {}
-  applyTheme(state.theme); applyLight();
+  applyTheme(state.theme);
   els.trailsBtn.textContent = "✦ Trails: " + (state.trailsOn ? "on" : "off");
   els.ground.textContent = "🛬 Ground: " + (state.hideGround ? "hidden" : "shown");
   els.ground.classList.toggle("active", state.hideGround);
