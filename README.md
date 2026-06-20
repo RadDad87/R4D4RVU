@@ -18,7 +18,8 @@ R4D4RVU centers a vintage CRT-style radar scope on your location and plots every
 - **Phosphor fade** — blips flare bright as the sweep passes their bearing, then dim like a real radar tube.
 - **Rich contact info on click** — callsign, **airline name & route (origin → destination)** via [adsbdb](https://www.adsbdb.com), a **real photo** of the aircraft via [planespotters.net](https://www.planespotters.net), plus ICAO24 hex, type & registration, altitude, speed, heading, vertical speed, squawk, and range/bearing.
 - **Altitude colour-coding** — blips are coloured by altitude band (ground · <10k · 10–20k · 20–30k · 30k+) with a legend.
-- **Emergency, military & government highlighting** — emergency squawks (7500/7600/7700) flash **red**; **military** aircraft are ringed **orange**; **government / special** aircraft (privacy-address, LADD, and flagged operators) are ringed **purple**.
+- **Threat & responder highlighting** — emergency squawks (7500/7600/7700) flash **pink**; **military, police, coast guard, and first-responder** aircraft are **bright red** with a ring (detected from military flags and callsigns/squawks); **government / special** aircraft (privacy-address, LADD, flagged operators) are **purple**.
+- **Type-specific symbols** — jets get a winged silhouette, light aircraft a small triangle, helicopters a rotor glyph, drones a diamond, gliders a slim dart, and ground vehicles a square (from the ADS-B emitter category).
 - **Hide ground traffic** — declutter the scope by hiding parked/taxiing aircraft (on by default); the contact count shows how many are hidden, e.g. `9 (+14 gnd)`.
 - **Works on mobile** — responsive layout, finger-sized tap targets, and the circle is sized to fit your screen; tap any blip for details.
 - **Track a plane** — lock onto any aircraft and the scope draws a homing line and a pulsing ring that follow it, with its details pinned in the panel even across refreshes (shows "signal lost" if it leaves coverage).
