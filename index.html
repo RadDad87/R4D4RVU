@@ -24,7 +24,7 @@
   }
   header h1 { font-size: 1.4rem; letter-spacing: 4px; margin: 0; color: var(--green); text-shadow: 0 0 8px rgba(54,255,139,0.5); }
   header .tag { font-size: 0.7rem; color: var(--green-dim); letter-spacing: 2px; }
-  .layout { width: 100%; max-width: 1120px; display: flex; gap: 20px; flex-wrap: wrap; justify-content: center; align-items: flex-start; }
+  .layout { width: 100%; max-width: 1120px; display: flex; gap: 24px; flex-wrap: wrap; justify-content: center; align-items: flex-start; }
   .scope-wrap { position: relative; width: min(94vw, 720px); aspect-ratio: 1 / 1; flex: 1 1 460px; min-width: 300px; max-width: 720px; align-self: flex-start; }
   canvas#radar {
     width: 100%; height: 100%; display: block; border-radius: 50%; cursor: crosshair;
@@ -36,7 +36,7 @@
     background: repeating-linear-gradient(0deg, rgba(0,0,0,0.10) 0px, rgba(0,0,0,0.10) 1px, transparent 2px, transparent 3px);
     mix-blend-mode: overlay; opacity: 0.5;
   }
-  .panel { flex: 1 1 260px; max-width: 340px; min-width: 240px; display: flex; flex-direction: column; gap: 12px; }
+  .panel { flex: 1 1 280px; max-width: 360px; min-width: 250px; display: flex; flex-direction: column; gap: 12px; }
   .card { background: linear-gradient(180deg, var(--panel), #04130b); border: 1px solid var(--green-faint); border-radius: 10px; padding: 12px 14px; }
   .card h2 { font-size: 0.7rem; letter-spacing: 2px; margin: 0 0 8px; color: var(--green-dim); text-transform: uppercase; }
   .readout { display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; font-size: 0.8rem; }
@@ -61,6 +61,10 @@
   .hint { font-size: 0.66rem; color: var(--green-dim); line-height: 1.4; margin: 4px 0 10px; }
   a { color: var(--green); }
   #detail { display: block; } #detail.show { border-color: var(--green-dim); }
+  #d-photo { display:none; width:100%; border-radius:6px; margin-top:10px; border:1px solid var(--green-faint); }
+  .legend { display:flex; gap:10px; flex-wrap:wrap; margin-top:10px; font-size:0.62rem; color:var(--green-dim); }
+  .legend i { display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:4px; vertical-align:middle; box-shadow:0 0 5px currentColor; }
+  #overhead { display:none; margin-top:8px; font-size:0.72rem; color:var(--amber); letter-spacing:1px; }
   footer { font-size: 0.66rem; color: var(--green-dim); letter-spacing: 1px; text-align: center; max-width: 1120px; }
 </style>
 </head>
@@ -90,13 +94,36 @@
         <h2>Contact</h2>
         <div class="readout">
           <span class="k">Callsign</span><span class="v" id="d-call">click a blip &rarr;</span>
+          <span class="k">Airline</span><span class="v" id="d-airline">—</span>
+          <span class="k">Route</span><span class="v" id="d-route">—</span>
           <span class="k">ICAO24</span><span class="v" id="d-icao">—</span>
           <span class="k">Type/Reg</span><span class="v" id="d-origin">—</span>
           <span class="k">Altitude</span><span class="v" id="d-alt">—</span>
           <span class="k">Speed</span><span class="v" id="d-spd">—</span>
           <span class="k">Heading</span><span class="v" id="d-hdg">—</span>
           <span class="k">V/Speed</span><span class="v" id="d-vert">—</span>
+          <span class="k">Squawk</span><span class="v" id="d-sq">—</span>
           <span class="k">Range/Brg</span><span class="v" id="d-rb">—</span>
+        </div>
+        <img id="d-photo" alt="aircraft photo" />
+        <div class="hint" id="d-credit" style="display:none;"></div>
+      </div>
+      <div class="card">
+        <h2>Scope</h2>
+        <div class="readout">
+          <span class="k">Closest</span><span class="v" id="s-closest">—</span>
+          <span class="k">Highest</span><span class="v" id="s-highest">—</span>
+          <span class="k">Fastest</span><span class="v" id="s-fastest">—</span>
+        </div>
+        <div id="overhead"></div>
+        <div class="legend">
+          <span><i style="color:#c8d6cf;background:#c8d6cf"></i>ground</span>
+          <span><i style="color:#ffd166;background:#ffd166"></i>&lt;10k</span>
+          <span><i style="color:#36ff8b;background:#36ff8b"></i>10–20k</span>
+          <span><i style="color:#36ffd1;background:#36ffd1"></i>20–30k</span>
+          <span><i style="color:#36c8ff;background:#36c8ff"></i>30k+</span>
+          <span><i style="color:#ff5d5d;background:#ff5d5d"></i>emergency</span>
+          <span><i style="color:#ff9d3c;background:#ff9d3c"></i>military</span>
         </div>
       </div>
       <div class="card">
@@ -111,13 +138,17 @@
             <option value="300">300 mi</option>
           </select>
         </div>
-        <div class="row" style="margin-bottom:10px;">
+        <div class="row" style="margin-bottom:8px;">
           <button id="locate">Use my location</button>
           <button id="pause" class="ghost">Pause</button>
         </div>
+        <div class="row" style="margin-bottom:10px;">
+          <button id="sound" class="ghost">🔇 Ping: off</button>
+          <button id="trails" class="ghost">✦ Trails: on</button>
+        </div>
         <details>
           <summary>⚙ Set location manually / options</summary>
-          <p class="hint">Live data comes from <a href="https://airplanes.live" target="_blank" rel="noopener">airplanes.live</a> — a free community ADS-B network. No API key needed. Allow location access, or type coordinates below.</p>
+          <p class="hint">Live data from <a href="https://airplanes.live" target="_blank" rel="noopener">airplanes.live</a>; flight routes from <a href="https://www.adsbdb.com" target="_blank" rel="noopener">adsbdb</a>; photos from <a href="https://www.planespotters.net" target="_blank" rel="noopener">planespotters.net</a>. No API key needed.</p>
           <div class="row">
             <div class="field"><label for="lat">Latitude</label><input id="lat" type="number" step="0.0001" placeholder="auto" /></div>
             <div class="field"><label for="lon">Longitude</label><input id="lon" type="number" step="0.0001" placeholder="auto" /></div>
@@ -133,39 +164,40 @@
   <footer>Live data &copy; <a href="https://airplanes.live" target="_blank" rel="noopener">airplanes.live</a> contributors. Positions are approximate and for hobby/educational use only — not for navigation.</footer>
 <script>
 "use strict";
-const CFG = {
-  dataUrl: "https://api.airplanes.live/v2/point/",
-  refreshMs: 12000, sweepPeriodMs: 4000
-};
+const CFG = { dataUrl: "https://api.airplanes.live/v2/point/", refreshMs: 12000, sweepPeriodMs: 4000, trailMs: 30000 };
 const KM_PER_MI = 1.60934, MI_PER_KM = 0.621371, KM_PER_NM = 1.852;
 const $ = id => document.getElementById(id);
+const setText = (id, t) => { const e = $(id); if (e) e.textContent = t; };
 const els = {
   canvas: $("radar"), mode: $("st-mode"), count: $("st-count"), range: $("st-range"),
   pos: $("st-pos"), updated: $("st-updated"), next: $("st-next"), rangeSel: $("range"),
   locate: $("locate"), pause: $("pause"), save: $("save"), demo: $("demo"),
-  lat: $("lat"), lon: $("lon"), detail: $("detail")
+  sound: $("sound"), trailsBtn: $("trails"), lat: $("lat"), lon: $("lon"), detail: $("detail")
 };
 const ctx = els.canvas.getContext("2d");
 const state = {
   rangeMi: 60, rangeKm: 60 * KM_PER_MI, origin: null, aircraft: [], selected: null,
-  mode: "demo", paused: false, lastFetch: 0, nextFetch: 0, _screen: []
+  mode: "demo", paused: false, lastFetch: 0, nextFetch: 0, _screen: [],
+  soundOn: false, trailsOn: true, _enrichedFor: null
 };
+const trails = {};            // icao24 -> [{x,y,t,col}]
+const enrichCache = {};       // icao24 -> {airline,route,photo,credit}
+let audioCtx = null, lastPing = 0, sweepPrev = 0;
+
 function loadPrefs() {
   try {
     const p = JSON.parse(localStorage.getItem("r4d4rvu") || "{}");
     if (p.rangeMi) { state.rangeMi = p.rangeMi; state.rangeKm = p.rangeMi * KM_PER_MI; els.rangeSel.value = String(p.rangeMi); }
     if (p.origin) { state.origin = p.origin; els.lat.value = p.origin.lat; els.lon.value = p.origin.lon; }
+    if (typeof p.trailsOn === "boolean") state.trailsOn = p.trailsOn;
   } catch (e) {}
 }
 function savePrefs() {
-  localStorage.setItem("r4d4rvu", JSON.stringify({ rangeMi: state.rangeMi, origin: state.origin }));
+  localStorage.setItem("r4d4rvu", JSON.stringify({ rangeMi: state.rangeMi, origin: state.origin, trailsOn: state.trailsOn }));
 }
-const R_EARTH = 6371;
-const toRad = d => d * Math.PI / 180;
-const toDeg = r => r * 180 / Math.PI;
+const R_EARTH = 6371, toRad = d => d * Math.PI / 180, toDeg = r => r * 180 / Math.PI;
 function haversine(a, b) {
-  const dLat = toRad(b.lat - a.lat), dLon = toRad(b.lon - a.lon);
-  const la1 = toRad(a.lat), la2 = toRad(b.lat);
+  const dLat = toRad(b.lat - a.lat), dLon = toRad(b.lon - a.lon), la1 = toRad(a.lat), la2 = toRad(b.lat);
   const h = Math.sin(dLat/2)**2 + Math.cos(la1)*Math.cos(la2)*Math.sin(dLon/2)**2;
   return 2 * R_EARTH * Math.asin(Math.sqrt(h));
 }
@@ -175,6 +207,7 @@ function bearing(a, b) {
   const x = Math.cos(la1)*Math.sin(la2) - Math.sin(la1)*Math.cos(la2)*Math.cos(dLon);
   return (toDeg(Math.atan2(y, x)) + 360) % 360;
 }
+const EMERG = { "7500": "hijack", "7600": "radio fail", "7700": "emergency" };
 async function fetchAircraft() {
   if (!state.origin) return;
   const nm = Math.min(Math.round(state.rangeKm / KM_PER_NM) + 2, 250);
@@ -194,15 +227,16 @@ async function fetchAircraft() {
     if (dist > state.rangeKm) continue;
     const onGround = a.alt_baro === "ground";
     const alt = onGround ? 0 : (typeof a.alt_baro === "number" ? a.alt_baro : null);
+    const sq = a.squawk || null;
     list.push({
-      icao24: a.hex || "?",
-      callsign: (a.flight || "").trim() || "------",
+      icao24: a.hex || "?", callsign: (a.flight || "").trim() || "------",
       origin_country: [a.t, a.r].filter(Boolean).join(" · ") || "—",
       lat: a.lat, lon: a.lon, onGround,
       velocity: (a.gs != null ? a.gs : null),
       heading: (a.track != null ? a.track : a.true_heading),
       vrate: (a.baro_rate != null ? a.baro_rate : a.geom_rate),
-      baro_alt: alt,
+      baro_alt: alt, squawk: sq, emergency: !!EMERG[sq],
+      mil: (typeof a.dbFlags === "number") ? (a.dbFlags & 1) === 1 : false,
       dist, brg: bearing(state.origin, pos), seen: now
     });
   }
@@ -219,11 +253,10 @@ function seedDemo() {
     demoFleet.push({
       icao24: Math.random().toString(16).slice(2, 8),
       callsign: carriers[i % carriers.length] + (100 + Math.floor(Math.random()*899)),
-      type: types[i % types.length],
-      brg: Math.random()*360, distFrac: Math.random(),
+      type: types[i % types.length], brg: Math.random()*360, distFrac: Math.random(),
       heading: Math.random()*360, speed: 220 + Math.random()*260,
-      vrate: Math.round((Math.random()-0.5)*3000),
-      baro_alt: 2000 + Math.floor(Math.random()*36000), onGround: false
+      vrate: Math.round((Math.random()-0.5)*3000), baro_alt: 2000 + Math.floor(Math.random()*36000),
+      onGround: false, mil: i === 2, emergency: i === 5, squawk: i === 5 ? "7700" : null
     });
   }
 }
@@ -231,7 +264,7 @@ function stepDemo(dt) {
   if (!demoFleet) seedDemo();
   const now = Date.now(); const list = [];
   for (const a of demoFleet) {
-    const spd = (a.speed / 3600) * (dt / 1000) / Math.max(state.rangeMi * MI_PER_KM * 0 + state.rangeKm, 1) * 60;
+    const spd = (a.speed / 3600) * (dt / 1000) / Math.max(state.rangeKm, 1) * 60;
     const hr = toRad(a.heading);
     let x = Math.sin(toRad(a.brg)) * a.distFrac + Math.sin(hr) * spd;
     let y = -Math.cos(toRad(a.brg)) * a.distFrac - Math.cos(hr) * spd;
@@ -240,8 +273,9 @@ function stepDemo(dt) {
     else { a.brg = (toDeg(Math.atan2(x, -y)) + 360) % 360; a.distFrac = frac; }
     list.push({
       icao24: a.icao24, callsign: a.callsign, origin_country: a.type + " · DEMO",
-      heading: a.heading, velocity: a.speed, vrate: a.vrate,
-      baro_alt: a.baro_alt, onGround: false, dist: frac * state.rangeKm, brg: a.brg, seen: now
+      heading: a.heading, velocity: a.speed, vrate: a.vrate, baro_alt: a.baro_alt,
+      onGround: false, squawk: a.squawk, emergency: a.emergency, mil: a.mil,
+      dist: frac * state.rangeKm, brg: a.brg, seen: now
     });
   }
   list.sort((p, q) => p.dist - q.dist);
@@ -257,21 +291,94 @@ const fmtAlt = ft => ft == null ? "—" : (ft === 0 ? "ground" : Math.round(ft).
 const fmtSpd = kt => kt == null ? "—" : Math.round(kt) + " kt";
 const fmtVrt = fpm => fpm == null ? "—" : (fpm >= 0 ? "+" : "-") + Math.abs(Math.round(fpm)) + " fpm";
 const fmtHdg = d => d == null ? "—" : Math.round(d) + "°";
+function altColor(ft, onGround) {
+  if (onGround || ft === 0) return [200,214,207];
+  if (ft == null) return [54,255,139];
+  if (ft < 10000) return [255,209,102];
+  if (ft < 20000) return [54,255,139];
+  if (ft < 30000) return [54,255,209];
+  return [54,200,255];
+}
+function blipColor(a) {
+  if (a.emergency) return [255,93,93];
+  if (a.mil) return [255,157,60];
+  return altColor(a.baro_alt, a.onGround);
+}
 function updateReadout() {
   els.count.textContent = state.aircraft.length;
   els.range.textContent = state.rangeMi + " mi";
   els.pos.textContent = state.origin ? state.origin.lat.toFixed(3) + ", " + state.origin.lon.toFixed(3) : "—";
   els.updated.textContent = state.lastFetch ? new Date(state.lastFetch).toLocaleTimeString() : "—";
+  updateStats();
   if (state.selected) renderDetail();
+}
+function updateStats() {
+  let closest = null, highest = null, fastest = null;
+  for (const x of state.aircraft) {
+    if (!closest || x.dist < closest.dist) closest = x;
+    if (x.baro_alt != null && (!highest || x.baro_alt > highest.baro_alt)) highest = x;
+    if (x.velocity != null && (!fastest || x.velocity > fastest.velocity)) fastest = x;
+  }
+  const tag = a => a ? (a.callsign.trim() === "------" ? a.icao24 : a.callsign.trim()) : "—";
+  setText("s-closest", closest ? tag(closest) + "  " + (closest.dist*MI_PER_KM).toFixed(1) + " mi" : "—");
+  setText("s-highest", highest ? tag(highest) + "  " + fmtAlt(highest.baro_alt) : "—");
+  setText("s-fastest", fastest ? tag(fastest) + "  " + fmtSpd(fastest.velocity) : "—");
+  const oh = state.aircraft.filter(x => !x.onGround && x.dist*MI_PER_KM <= 1.5).sort((p,q)=>p.dist-q.dist)[0];
+  const ohEl = $("overhead");
+  if (oh) { ohEl.style.display = "block"; ohEl.textContent = "✈ OVERHEAD: " + tag(oh) + " · " + fmtAlt(oh.baro_alt); }
+  else ohEl.style.display = "none";
 }
 function renderDetail() {
   const a = state.aircraft.find(x => x.icao24 === state.selected);
-  if (!a) { els.detail.classList.remove("show"); $("d-call").textContent = "click a blip →"; return; }
+  if (!a) { els.detail.classList.remove("show"); setText("d-call", "click a blip →"); return; }
   els.detail.classList.add("show");
-  $("d-call").textContent = a.callsign; $("d-icao").textContent = a.icao24;
-  $("d-origin").textContent = a.origin_country || "—"; $("d-alt").textContent = fmtAlt(a.baro_alt);
-  $("d-spd").textContent = fmtSpd(a.velocity); $("d-hdg").textContent = fmtHdg(a.heading);
-  $("d-vert").textContent = fmtVrt(a.vrate); $("d-rb").textContent = (a.dist * MI_PER_KM).toFixed(1) + " mi / " + Math.round(a.brg) + "°";
+  setText("d-call", a.callsign); setText("d-icao", a.icao24);
+  setText("d-origin", a.origin_country || "—"); setText("d-alt", fmtAlt(a.baro_alt));
+  setText("d-spd", fmtSpd(a.velocity)); setText("d-hdg", fmtHdg(a.heading));
+  setText("d-vert", fmtVrt(a.vrate));
+  setText("d-sq", a.squawk ? (a.squawk + (EMERG[a.squawk] ? " ⚠ " + EMERG[a.squawk] : "") + (a.mil ? " · MIL" : "")) : (a.mil ? "MIL" : "—"));
+  $("d-sq").style.color = a.emergency ? "#ff5d5d" : (a.mil ? "#ff9d3c" : "var(--green)");
+  setText("d-rb", (a.dist * MI_PER_KM).toFixed(1) + " mi / " + Math.round(a.brg) + "°");
+  if (state._enrichedFor !== a.icao24) { state._enrichedFor = a.icao24; enrichSelected(a); }
+}
+let enrichSeq = 0;
+function showEnrich(c) {
+  setText("d-airline", c.airline || "—"); setText("d-route", c.route || "—");
+  const img = $("d-photo"), cr = $("d-credit");
+  if (c.photo) { img.src = c.photo; img.style.display = "block"; cr.textContent = c.credit || ""; cr.style.display = c.credit ? "block" : "none"; }
+  else { img.style.display = "none"; cr.style.display = "none"; }
+}
+async function enrichSelected(a) {
+  const my = ++enrichSeq;
+  if (enrichCache[a.icao24]) { showEnrich(enrichCache[a.icao24]); return; }
+  const c = { airline: "…", route: "…", photo: null, credit: "" };
+  showEnrich(c);
+  const cs = (a.callsign || "").trim();
+  const jobs = [];
+  jobs.push(fetch("https://api.adsbdb.com/v0/aircraft/" + a.icao24, { signal: AbortSignal.timeout(8000) }).then(r=>r.json()).then(j=>{
+    const ac = j.response && j.response.aircraft;
+    if (ac && ac.registered_owner) c.airline = ac.registered_owner;
+  }).catch(()=>{}));
+  if (cs && cs !== "------") {
+    jobs.push(fetch("https://api.adsbdb.com/v0/callsign/" + encodeURIComponent(cs), { signal: AbortSignal.timeout(8000) }).then(r=>r.json()).then(j=>{
+      const fr = j.response && j.response.flightroute;
+      if (fr) {
+        if (fr.airline && fr.airline.name) c.airline = fr.airline.name;
+        const o = fr.origin, d = fr.destination;
+        const lbl = ap => ap ? ((ap.iata_code || ap.icao_code || "?") + (ap.municipality ? " " + ap.municipality : "")) : "?";
+        if (o || d) c.route = lbl(o) + " → " + lbl(d);
+      }
+    }).catch(()=>{}));
+  }
+  jobs.push(fetch("https://api.planespotters.net/pubapi/v1/hex/" + a.icao24, { signal: AbortSignal.timeout(8000) }).then(r=>r.json()).then(j=>{
+    const ph = j.photos && j.photos[0];
+    if (ph) { c.photo = (ph.thumbnail_large ? ph.thumbnail_large.src : ph.thumbnail.src); c.credit = "photo © " + (ph.photographer || "?") + " / planespotters.net"; }
+  }).catch(()=>{}));
+  await Promise.all(jobs);
+  if (c.airline === "…") c.airline = "—";
+  if (c.route === "…") c.route = "—";
+  enrichCache[a.icao24] = c;
+  if (my === enrichSeq && state.selected === a.icao24) showEnrich(c);
 }
 const SIZE = 1040, C = SIZE / 2, RR = SIZE / 2 - 40;
 let sweepAngle = 0, lastFrame = performance.now();
@@ -286,7 +393,7 @@ function drawGrid() {
     ctx.strokeStyle = "rgba(54,255,139,0.22)";
     ctx.beginPath(); ctx.arc(C, C, (RR * i) / 4, 0, Math.PI * 2); ctx.stroke();
     ctx.fillStyle = "rgba(54,255,139,0.45)"; ctx.font = "24px monospace";
-    ctx.fillText(Math.round((state.rangeMi * i) / 4) + "mi", C + 6, C - (RR * i) / 4 + 22);
+    ctx.fillText(Math.round((state.rangeMi * i) / 4) + "mi", C + 6, C - (RR * i) / 4 + 24);
   }
   for (let d = 0; d < 360; d += 30) {
     const a = toRad(d);
@@ -295,10 +402,24 @@ function drawGrid() {
   }
   ctx.fillStyle = "#36ff8b"; ctx.font = "bold 34px monospace";
   ctx.textAlign = "center"; ctx.textBaseline = "middle";
-  ctx.fillText("N", C, C - RR - 18); ctx.fillText("S", C, C + RR + 18);
-  ctx.fillText("E", C + RR + 18, C); ctx.fillText("W", C - RR - 18, C);
+  ctx.fillText("N", C, C - RR - 20); ctx.fillText("S", C, C + RR + 20);
+  ctx.fillText("E", C + RR + 20, C); ctx.fillText("W", C - RR - 20, C);
   ctx.textAlign = "start"; ctx.textBaseline = "alphabetic";
   ctx.fillStyle = "#9bffc8"; ctx.beginPath(); ctx.arc(C, C, 5, 0, Math.PI*2); ctx.fill();
+}
+function drawTrails(now) {
+  for (const id in trails) {
+    const pts = trails[id];
+    if (!pts || pts.length < 2) continue;
+    for (let i = 1; i < pts.length; i++) {
+      const age = now - pts[i].t, a0 = Math.max(0, 1 - age / CFG.trailMs);
+      if (a0 <= 0) continue;
+      const col = pts[i].col;
+      ctx.strokeStyle = "rgba(" + col[0] + "," + col[1] + "," + col[2] + "," + (a0 * 0.35) + ")";
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(pts[i-1].x, pts[i-1].y); ctx.lineTo(pts[i].x, pts[i].y); ctx.stroke();
+    }
+  }
 }
 function drawSweep() {
   ctx.save(); ctx.translate(C, C); ctx.rotate(toRad(sweepAngle));
@@ -314,36 +435,81 @@ function drawSweep() {
   ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, -RR); ctx.stroke();
   ctx.restore(); ctx.shadowBlur = 0;
 }
-function drawBlips() {
+function drawBlips(now) {
   ctx.textAlign = "start";
   for (const a of state.aircraft) {
     const p = planeXY(a);
     let rel = (sweepAngle - a.brg + 360) % 360;
-    let glow = Math.max(0, 1 - rel / 90); glow = 0.25 + glow * 0.75;
+    let glow = Math.max(0, 1 - rel / 90); glow = 0.28 + glow * 0.72;
     const sel = a.icao24 === state.selected;
+    let col = blipColor(a);
+    if (a.emergency && (now % 600) < 300) col = [255,30,30];
+    // trail history
+    if (state.trailsOn) {
+      const arr = trails[a.icao24] || (trails[a.icao24] = []);
+      const last = arr[arr.length - 1];
+      if (!last || Math.hypot(last.x - p.x, last.y - p.y) > 2) arr.push({ x: p.x, y: p.y, t: now, col });
+      while (arr.length && now - arr[0].t > CFG.trailMs) arr.shift();
+    }
+    if (sel) {
+      ctx.strokeStyle = "rgba(255,225,150,0.9)"; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(p.x, p.y, 18, 0, Math.PI*2); ctx.stroke();
+    }
+    if (a.mil) {
+      ctx.strokeStyle = "rgba(255,157,60," + glow + ")"; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(p.x, p.y, 13, 0, Math.PI*2); ctx.stroke();
+    }
     ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(toRad(a.heading || 0));
-    ctx.fillStyle = sel ? "rgba(255,209,102," + glow + ")" : "rgba(54,255,139," + glow + ")";
-    ctx.shadowColor = sel ? "rgba(255,209,102,0.8)" : "rgba(54,255,139,0.8)";
-    ctx.shadowBlur = 10 * glow;
+    ctx.fillStyle = "rgba(" + col[0] + "," + col[1] + "," + col[2] + "," + glow + ")";
+    ctx.shadowColor = "rgba(" + col[0] + "," + col[1] + "," + col[2] + ",0.85)";
+    ctx.shadowBlur = 11 * glow;
     ctx.beginPath(); ctx.moveTo(0, -12); ctx.lineTo(8, 9); ctx.lineTo(0, 4); ctx.lineTo(-8, 9); ctx.closePath(); ctx.fill();
     ctx.restore(); ctx.shadowBlur = 0;
-    ctx.fillStyle = sel ? "rgba(255,225,150," + (0.5+glow*0.5) + ")" : "rgba(150,255,200," + (0.35+glow*0.5) + ")";
+    const lc = sel ? [255,225,150] : col;
+    ctx.fillStyle = "rgba(" + lc[0] + "," + lc[1] + "," + lc[2] + "," + (0.45+glow*0.5) + ")";
     ctx.font = (sel ? "bold " : "") + "23px monospace";
     ctx.fillText(a.callsign, p.x + 13, p.y - 7);
     if (sel || glow > 0.7) {
-      ctx.fillStyle = "rgba(120,220,170," + (0.3+glow*0.4) + ")"; ctx.font = "18px monospace";
+      ctx.fillStyle = "rgba(" + lc[0] + "," + lc[1] + "," + lc[2] + "," + (0.3+glow*0.4) + ")"; ctx.font = "18px monospace";
       ctx.fillText(fmtAlt(a.baro_alt), p.x + 13, p.y + 13);
     }
   }
+  // prune stale trails for gone aircraft
+  const live = new Set(state.aircraft.map(a => a.icao24));
+  for (const id in trails) { if (!live.has(id)) { while (trails[id].length && now - trails[id][0].t > CFG.trailMs) trails[id].shift(); if (!trails[id].length) delete trails[id]; } }
   state._screen = state.aircraft.map(a => { const p = planeXY(a); return { icao24: a.icao24, x: p.x, y: p.y }; });
 }
+function crossed(prev, cur, b) { return prev <= cur ? (b > prev && b <= cur) : (b > prev || b <= cur); }
+function ensureAudio() { if (!audioCtx) { try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch(e){} } }
+function ping(freq, dur, vol) {
+  if (!state.soundOn || !audioCtx) return;
+  const t = audioCtx.currentTime, o = audioCtx.createOscillator(), g = audioCtx.createGain();
+  o.type = "sine"; o.frequency.value = freq;
+  g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(g).connect(audioCtx.destination); o.start(t); o.stop(t + dur);
+}
 function frame(t) {
-  const dt = t - lastFrame; lastFrame = t;
+  const dt = t - lastFrame; lastFrame = t; const now = Date.now();
   if (!state.paused) {
+    sweepPrev = sweepAngle;
     sweepAngle = (sweepAngle + (360 * dt) / CFG.sweepPeriodMs) % 360;
     if (state.mode === "demo") stepDemo(dt);
+    if (state.soundOn && state.aircraft.length) {
+      const p = performance.now();
+      if (p - lastPing > 80) {
+        for (const a of state.aircraft) {
+          if (crossed(sweepPrev, sweepAngle, a.brg)) {
+            const f = a.emergency ? 1500 : (a.icao24 === state.selected ? 1240 : 760 + Math.min(360, (a.baro_alt||0)/120));
+            ping(f, 0.05, a.emergency ? 0.10 : 0.045); lastPing = p; break;
+          }
+        }
+      }
+    }
   }
-  drawGrid(); drawBlips(); drawSweep();
+  drawGrid();
+  if (state.trailsOn) drawTrails(now);
+  drawBlips(now);
+  drawSweep();
   if (state.mode !== "demo" && state.nextFetch) {
     const s = Math.max(0, Math.ceil((state.nextFetch - Date.now()) / 1000));
     els.next.textContent = state.paused ? "paused" : s + "s";
@@ -352,21 +518,16 @@ function frame(t) {
 }
 els.canvas.addEventListener("mousemove", e => {
   const r = els.canvas.getBoundingClientRect();
-  const x = (e.clientX - r.left) * (SIZE / r.width);
-  const y = (e.clientY - r.top) * (SIZE / r.height);
+  const x = (e.clientX - r.left) * (SIZE / r.width), y = (e.clientY - r.top) * (SIZE / r.height);
   let over = false;
   for (const s2 of (state._screen || [])) { if (Math.hypot(s2.x - x, s2.y - y) < 55) { over = true; break; } }
   els.canvas.style.cursor = over ? "pointer" : "crosshair";
 });
 els.canvas.addEventListener("click", e => {
   const r = els.canvas.getBoundingClientRect();
-  const x = (e.clientX - r.left) * (SIZE / r.width);
-  const y = (e.clientY - r.top) * (SIZE / r.height);
+  const x = (e.clientX - r.left) * (SIZE / r.width), y = (e.clientY - r.top) * (SIZE / r.height);
   let best = null, bd = 55;
-  for (const s of (state._screen || [])) {
-    const d = Math.hypot(s.x - x, s.y - y);
-    if (d < bd) { bd = d; best = s.icao24; }
-  }
+  for (const s of (state._screen || [])) { const d = Math.hypot(s.x - x, s.y - y); if (d < bd) { bd = d; best = s.icao24; } }
   state.selected = best; renderDetail();
 });
 els.rangeSel.addEventListener("change", () => {
@@ -374,8 +535,17 @@ els.rangeSel.addEventListener("change", () => {
   savePrefs(); updateReadout(); tick(true);
 });
 els.locate.addEventListener("click", requestLocation);
-els.pause.addEventListener("click", () => {
-  state.paused = !state.paused; els.pause.textContent = state.paused ? "Resume" : "Pause";
+els.pause.addEventListener("click", () => { state.paused = !state.paused; els.pause.textContent = state.paused ? "Resume" : "Pause"; });
+els.sound.addEventListener("click", () => {
+  state.soundOn = !state.soundOn;
+  if (state.soundOn) { ensureAudio(); if (audioCtx && audioCtx.state === "suspended") audioCtx.resume(); ping(880, 0.06, 0.05); }
+  els.sound.textContent = (state.soundOn ? "🔊" : "🔇") + " Ping: " + (state.soundOn ? "on" : "off");
+});
+els.trailsBtn.addEventListener("click", () => {
+  state.trailsOn = !state.trailsOn;
+  if (!state.trailsOn) for (const id in trails) delete trails[id];
+  els.trailsBtn.textContent = "✦ Trails: " + (state.trailsOn ? "on" : "off");
+  savePrefs();
 });
 els.save.addEventListener("click", () => {
   if (els.lat.value && els.lon.value) state.origin = { lat: parseFloat(els.lat.value), lon: parseFloat(els.lon.value) };
@@ -411,6 +581,7 @@ async function tick(force) {
 }
 function boot() {
   loadPrefs(); updateReadout(); setMode("demo"); seedDemo();
+  els.trailsBtn.textContent = "✦ Trails: " + (state.trailsOn ? "on" : "off");
   if (state.origin) { setMode("live"); tick(true); } else { requestLocation(); }
   setInterval(() => tick(false), 1000);
   requestAnimationFrame(frame);
