@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>R4D4RVU — Live Air Traffic Radar</title>
+<meta name="description" content="A classic round radar that sweeps the skies above your location using live OpenSky Network air-traffic data." />
+<style>
+  :root {
+    --bg: #03120a;
+    --panel: #061a0f;
+    --green: #36ff8b;
+    --green-dim: #1f9c54;
+    --green-faint: rgba(54, 255, 139, 0.18);
+    --amber: #ffd166;
+    --red: #ff5d5d;
+    --text: #b8ffd4;
+    --mono: "SF Mono", "JetBrains Mono", "Fira Code", Consolas, "Courier New", monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: radial-gradient(circle at 50% 0%, #07241400, #010a06 70%), var(--bg);
+    color: var(--text); font-family: var(--mono); min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+  }
+  body { display: flex; flex-direction: column; align-items: center; padding: 16px 12px 40px; gap: 16px; }
+  header {
+    width: 100%; max-width: 900px; display: flex; align-items: baseline;
+    justify-content: space-between; flex-wrap: wrap; gap: 6px;
+    border-bottom: 1px solid var(--green-faint); padding-bottom: 10px;
+  }
+  header h1 { font-size: 1.4rem; letter-spacing: 4px; margin: 0; color: var(--green); text-shadow: 0 0 8px rgba(54,255,139,0.5); }
+  header .tag { font-size: 0.7rem; color: var(--green-dim); letter-spacing: 2px; }
+  .layout { width: 100%; max-width: 900px; display: flex; gap: 20px; flex-wrap: wrap; justify-content: center; }
+  .scope-wrap { position: relative; width: min(92vw, 520px); aspect-ratio: 1 / 1; flex: 0 0 auto; }
+  canvas#radar {
+    width: 100%; height: 100%; display: block; border-radius: 50%;
+    background: radial-gradient(circle at 50% 50%, #053a1d 0%, #021c0d 60%, #001206 100%);
+    box-shadow: 0 0 0 6px #04150b, 0 0 0 8px rgba(54,255,139,0.25),
+      0 0 40px rgba(54,255,139,0.18) inset, 0 0 50px rgba(0,0,0,0.8);
+  }
+  .scope-overlay {
+    position: absolute; inset: 0; pointer-events: none; border-radius: 50%;
+    background: repeating-linear-gradient(0deg, rgba(0,0,0,0.10) 0px, rgba(0,0,0,0.10) 1px, transparent 2px, transparent 3px);
+    mix-blend-mode: overlay; opacity: 0.5;
+  }
+  .panel { flex: 1 1 260px; max-width: 340px; min-width: 240px; display: flex; flex-direction: column; gap: 12px; }
+  .card { background: linear-gradient(180deg, var(--panel), #04130b); border: 1px solid var(--green-faint); border-radius: 10px; padding: 12px 14px; }
+  .card h2 { font-size: 0.7rem; letter-spacing: 2px; margin: 0 0 8px; color: var(--green-dim); text-transform: uppercase; }
+  .readout { display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; font-size: 0.8rem; }
+  .readout .k { color: var(--green-dim); }
+  .readout .v { color: var(--green); text-align: right; word-break: break-word; }
+  .status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+  .dot-live { background: var(--green); box-shadow: 0 0 8px var(--green); }
+  .dot-demo { background: var(--amber); box-shadow: 0 0 8px var(--amber); }
+  .dot-err  { background: var(--red);   box-shadow: 0 0 8px var(--red); }
+  label { font-size: 0.72rem; color: var(--green-dim); display: block; margin-bottom: 3px; letter-spacing: 1px; }
+  input, select, button { font-family: var(--mono); background: #021109; color: var(--green); border: 1px solid var(--green-faint); border-radius: 6px; padding: 7px 9px; font-size: 0.8rem; width: 100%; }
+  input:focus, select:focus { outline: none; border-color: var(--green-dim); }
+  .row { display: flex; gap: 8px; } .row > * { flex: 1; }
+  button { cursor: pointer; background: #05311b; border-color: var(--green-dim); letter-spacing: 1px; transition: background 0.15s, box-shadow 0.15s; }
+  button:hover { background: #086c39; box-shadow: 0 0 12px rgba(54,255,139,0.35); }
+  button.ghost { background: #021109; }
+  .field { margin-bottom: 10px; }
+  details summary { cursor: pointer; color: var(--green-dim); font-size: 0.72rem; letter-spacing: 1px; margin-bottom: 8px; }
+  .hint { font-size: 0.66rem; color: var(--green-dim); line-height: 1.4; margin-top: 6px; }
+  a { color: var(--green); }
+  #detail { display: none; } #detail.show { display: block; border-color: var(--green-dim); }
+  footer { font-size: 0.66rem; color: var(--green-dim); letter-spacing: 1px; text-align: center; max-width: 900px; }
+</style>
+</head>
+<body>
+  <header>
+    <h1>R4D4RVU</h1>
+    <span class="tag">LIVE AIR-TRAFFIC SCOPE · OPENSKY NETWORK</span>
+  </header>
+  <div class="layout">
+    <div class="scope-wrap">
+      <canvas id="radar" width="1040" height="1040"></canvas>
+      <div class="scope-overlay"></div>
+    </div>
+    <div class="panel">
+      <div class="card">
+        <h2>Status</h2>
+        <div class="readout">
+          <span class="k">Mode</span><span class="v" id="st-mode"><span class="status-dot dot-demo"></span>—</span>
+          <span class="k">Contacts</span><span class="v" id="st-count">0</span>
+          <span class="k">Range</span><span class="v" id="st-range">100 km</span>
+          <span class="k">Your pos</span><span class="v" id="st-pos">—</span>
+          <span class="k">Updated</span><span class="v" id="st-updated">—</span>
+          <span class="k">Next ping</span><span class="v" id="st-next">—</span>
+        </div>
+      </div>
+      <div class="card" id="detail">
+        <h2>Contact</h2>
+        <div class="readout">
+          <span class="k">Callsign</span><span class="v" id="d-call">—</span>
+          <span class="k">ICAO24</span><span class="v" id="d-icao">—</span>
+          <span class="k">Origin</span><span class="v" id="d-origin">—</span>
+          <span class="k">Altitude</span><span class="v" id="d-alt">—</span>
+          <span class="k">Speed</span><span class="v" id="d-spd">—</span>
+          <span class="k">Heading</span><span class="v" id="d-hdg">—</span>
+          <span class="k">V/Speed</span><span class="v" id="d-vert">—</span>
+          <span class="k">Range/Brg</span><span class="v" id="d-rb">—</span>
+        </div>
+      </div>
+      <div class="card">
+        <h2>Controls</h2>
+        <div class="field">
+          <label for="range">Scope range</label>
+          <select id="range">
+            <option value="25">25 km</option>
+            <option value="50">50 km</option>
+            <option value="100" selected>100 km</option>
+            <option value="250">250 km</option>
+            <option value="500">500 km</option>
+          </select>
+        </div>
+        <div class="row" style="margin-bottom:10px;">
+          <button id="locate">Use my location</button>
+          <button id="pause" class="ghost">Pause</button>
+        </div>
+        <details>
+          <summary>OpenSky credentials &amp; manual position</summary>
+          <div class="field"><label for="cid">OpenSky client_id</label><input id="cid" type="text" autocomplete="off" placeholder="your-api-client" /></div>
+          <div class="field"><label for="csec">OpenSky client_secret</label><input id="csec" type="password" autocomplete="off" placeholder="********" /></div>
+          <div class="row">
+            <div class="field"><label for="lat">Latitude</label><input id="lat" type="number" step="0.0001" placeholder="auto" /></div>
+            <div class="field"><label for="lon">Longitude</label><input id="lon" type="number" step="0.0001" placeholder="auto" /></div>
+          </div>
+          <div class="row">
+            <button id="save">Save &amp; connect</button>
+            <button id="demo" class="ghost">Demo mode</button>
+          </div>
+          <p class="hint">Credentials are stored only in this browser (localStorage) and sent directly to OpenSky. Get them at <a href="https://opensky-network.org/my-opensky/account" target="_blank" rel="noopener">your OpenSky account</a> &rarr; "API client". Leave blank to try anonymous access.</p>
+        </details>
+      </div>
+    </div>
+  </div>
+  <footer>Data &copy; <a href="https://opensky-network.org" target="_blank" rel="noopener">The OpenSky Network</a>. Positions are approximate and for hobby/educational use only — not for navigation.</footer>
+<script>
+"use strict";
+const CFG = {
+  tokenUrl: "https://auth.opensky-network.org/auth/realms/opensky-network/protocol/openid-connect/token",
+  statesUrl: "https://opensky-network.org/api/states/all",
+  refreshMs: 12000, sweepPeriodMs: 4000
+};
+const $ = id => document.getElementById(id);
+const els = {
+  canvas: $("radar"), mode: $("st-mode"), count: $("st-count"), range: $("st-range"),
+  pos: $("st-pos"), updated: $("st-updated"), next: $("st-next"), rangeSel: $("range"),
+  locate: $("locate"), pause: $("pause"), save: $("save"), demo: $("demo"),
+  cid: $("cid"), csec: $("csec"), lat: $("lat"), lon: $("lon"), detail: $("detail")
+};
+const ctx = els.canvas.getContext("2d");
+const state = {
+  rangeKm: 100, origin: null, aircraft: [], selected: null,
+  mode: "demo", paused: false, lastFetch: 0, nextFetch: 0,
+  token: null, tokenExp: 0, creds: { cid: "", csec: "" }, _screen: []
+};
+function loadPrefs() {
+  try {
+    const p = JSON.parse(localStorage.getItem("r4d4rvu") || "{}");
+    if (p.cid) { state.creds.cid = p.cid; els.cid.value = p.cid; }
+    if (p.csec) { state.creds.csec = p.csec; els.csec.value = p.csec; }
+    if (p.rangeKm) { state.rangeKm = p.rangeKm; els.rangeSel.value = String(p.rangeKm); }
+    if (p.origin) { state.origin = p.origin; els.lat.value = p.origin.lat; els.lon.value = p.origin.lon; }
+  } catch (e) {}
+}
+function savePrefs() {
+  localStorage.setItem("r4d4rvu", JSON.stringify({
+    cid: state.creds.cid, csec: state.creds.csec, rangeKm: state.rangeKm, origin: state.origin
+  }));
+}
+const R_EARTH = 6371;
+const toRad = d => d * Math.PI / 180;
+const toDeg = r => r * 180 / Math.PI;
+function haversine(a, b) {
+  const dLat = toRad(b.lat - a.lat), dLon = toRad(b.lon - a.lon);
+  const la1 = toRad(a.lat), la2 = toRad(b.lat);
+  const h = Math.sin(dLat/2)**2 + Math.cos(la1)*Math.cos(la2)*Math.sin(dLon/2)**2;
+  return 2 * R_EARTH * Math.asin(Math.sqrt(h));
+}
+function bearing(a, b) {
+  const dLon = toRad(b.lon - a.lon), la1 = toRad(a.lat), la2 = toRad(b.lat);
+  const y = Math.sin(dLon) * Math.cos(la2);
+  const x = Math.cos(la1)*Math.sin(la2) - Math.sin(la1)*Math.cos(la2)*Math.cos(dLon);
+  return (toDeg(Math.atan2(y, x)) + 360) % 360;
+}
+function bbox(origin, rangeKm) {
+  const dLat = (rangeKm / 111) * 1.1;
+  const dLon = (rangeKm / (111 * Math.cos(toRad(origin.lat)))) * 1.1;
+  return { lamin: origin.lat - dLat, lamax: origin.lat + dLat, lomin: origin.lon - dLon, lomax: origin.lon + dLon };
+}
+async function getToken() {
+  if (!state.creds.cid || !state.creds.csec) return null;
+  if (state.token && Date.now() < state.tokenExp - 30000) return state.token;
+  const body = new URLSearchParams({ grant_type: "client_credentials", client_id: state.creds.cid, client_secret: state.creds.csec });
+  const res = await fetch(CFG.tokenUrl, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body });
+  if (!res.ok) throw new Error("Auth failed (" + res.status + ")");
+  const j = await res.json();
+  state.token = j.access_token;
+  state.tokenExp = Date.now() + (j.expires_in || 1800) * 1000;
+  return state.token;
+}
+async function fetchAircraft() {
+  if (!state.origin) return;
+  const b = bbox(state.origin, state.rangeKm);
+  const url = CFG.statesUrl + "?lamin=" + b.lamin + "&lomin=" + b.lomin + "&lamax=" + b.lamax + "&lomax=" + b.lomax;
+  const headers = {};
+  try { const tok = await getToken(); if (tok) headers["Authorization"] = "Bearer " + tok; }
+  catch (e) { setMode("error", e.message); }
+  let res;
+  try { res = await fetch(url, { headers }); }
+  catch (e) { setMode("error", "Network/CORS error"); return; }
+  if (res.status === 401) { state.token = null; setMode("error", "Token expired/invalid"); return; }
+  if (res.status === 429) { setMode("error", "Rate limited"); return; }
+  if (!res.ok) { setMode("error", "OpenSky " + res.status); return; }
+  const data = await res.json();
+  const rows = data.states || [];
+  const now = Date.now();
+  const list = [];
+  for (const s of rows) {
+    const lon = s[5], lat = s[6];
+    if (lat == null || lon == null) continue;
+    const pos = { lat, lon };
+    const dist = haversine(state.origin, pos);
+    if (dist > state.rangeKm) continue;
+    list.push({
+      icao24: s[0], callsign: (s[1] || "").trim() || "------",
+      origin_country: s[2], lon, lat, onGround: s[8],
+      velocity: s[9], heading: s[10], vrate: s[11],
+      baro_alt: s[7], geo_alt: s[13],
+      dist, brg: bearing(state.origin, pos), seen: now
+    });
+  }
+  list.sort((a, b) => a.dist - b.dist);
+  state.aircraft = list; state.lastFetch = now;
+  setMode("live"); updateReadout();
+}
+let demoFleet = null;
+function seedDemo() {
+  const n = 14; demoFleet = [];
+  const carriers = ["BAW","DLH","AFR","UAL","DAL","RYR","EZY","KLM","SWA","QFA","AAL","ACA"];
+  for (let i = 0; i < n; i++) {
+    demoFleet.push({
+      icao24: Math.random().toString(16).slice(2, 8),
+      callsign: carriers[i % carriers.length] + (100 + Math.floor(Math.random()*899)),
+      origin_country: "Demo", brg: Math.random()*360, distFrac: Math.random(),
+      heading: Math.random()*360, speed: 180 + Math.random()*60,
+      velocity: 180 + Math.random()*90, vrate: (Math.random()-0.5)*8,
+      baro_alt: 1500 + Math.random()*11000, onGround: false
+    });
+  }
+}
+function stepDemo(dt) {
+  if (!demoFleet) seedDemo();
+  const now = Date.now(); const list = [];
+  for (const a of demoFleet) {
+    const spd = (a.speed / 3600) * (dt / 1000) / Math.max(state.rangeKm, 1) * 60;
+    const hr = toRad(a.heading);
+    let x = Math.sin(toRad(a.brg)) * a.distFrac + Math.sin(hr) * spd;
+    let y = -Math.cos(toRad(a.brg)) * a.distFrac - Math.cos(hr) * spd;
+    let frac = Math.hypot(x, y);
+    if (frac > 1.05) { a.brg = (a.brg + 180) % 360; a.distFrac = 1.0; frac = 1.0; }
+    else { a.brg = (toDeg(Math.atan2(x, -y)) + 360) % 360; a.distFrac = frac; }
+    list.push({
+      icao24: a.icao24, callsign: a.callsign, origin_country: a.origin_country,
+      heading: a.heading, velocity: a.velocity, vrate: a.vrate,
+      baro_alt: a.baro_alt, onGround: false, dist: frac * state.rangeKm, brg: a.brg, seen: now
+    });
+  }
+  list.sort((p, q) => p.dist - q.dist);
+  state.aircraft = list; state.lastFetch = now;
+}
+function setMode(m, msg) {
+  state.mode = m;
+  const dot = m === "live" ? "dot-live" : m === "demo" ? "dot-demo" : "dot-err";
+  const label = m === "live" ? "LIVE" : m === "demo" ? "DEMO" : ("ERR" + (msg ? " · " + msg : ""));
+  els.mode.innerHTML = '<span class="status-dot ' + dot + '"></span>' + label;
+}
+const fmtAlt = m => m == null ? "—" : Math.round(m * 3.28084).toLocaleString() + " ft";
+const fmtSpd = ms => ms == null ? "—" : Math.round(ms * 1.94384) + " kt";
+const fmtVrt = ms => ms == null ? "—" : (ms >= 0 ? "+" : "-") + Math.abs(Math.round(ms * 196.85)) + " fpm";
+const fmtHdg = d => d == null ? "—" : Math.round(d) + "°";
+function updateReadout() {
+  els.count.textContent = state.aircraft.length;
+  els.range.textContent = state.rangeKm + " km";
+  els.pos.textContent = state.origin ? state.origin.lat.toFixed(3) + ", " + state.origin.lon.toFixed(3) : "—";
+  els.updated.textContent = state.lastFetch ? new Date(state.lastFetch).toLocaleTimeString() : "—";
+  if (state.selected) renderDetail();
+}
+function renderDetail() {
+  const a = state.aircraft.find(x => x.icao24 === state.selected);
+  if (!a) { els.detail.classList.remove("show"); return; }
+  els.detail.classList.add("show");
+  $("d-call").textContent = a.callsign; $("d-icao").textContent = a.icao24;
+  $("d-origin").textContent = a.origin_country || "—"; $("d-alt").textContent = fmtAlt(a.baro_alt);
+  $("d-spd").textContent = fmtSpd(a.velocity); $("d-hdg").textContent = fmtHdg(a.heading);
+  $("d-vert").textContent = fmtVrt(a.vrate); $("d-rb").textContent = a.dist.toFixed(1) + " km / " + Math.round(a.brg) + "°";
+}
+const SIZE = 1040, C = SIZE / 2, RR = SIZE / 2 - 40;
+let sweepAngle = 0, lastFrame = performance.now();
+function planeXY(a) {
+  const f = Math.min(a.dist / state.rangeKm, 1);
+  return { x: C + Math.sin(toRad(a.brg)) * f * RR, y: C - Math.cos(toRad(a.brg)) * f * RR };
+}
+function drawGrid() {
+  ctx.clearRect(0, 0, SIZE, SIZE);
+  ctx.lineWidth = 1.5;
+  for (let i = 1; i <= 4; i++) {
+    ctx.strokeStyle = "rgba(54,255,139,0.22)";
+    ctx.beginPath(); ctx.arc(C, C, (RR * i) / 4, 0, Math.PI * 2); ctx.stroke();
+    ctx.fillStyle = "rgba(54,255,139,0.4)"; ctx.font = "20px monospace";
+    ctx.fillText(Math.round((state.rangeKm * i) / 4) + "km", C + 6, C - (RR * i) / 4 + 22);
+  }
+  for (let d = 0; d < 360; d += 30) {
+    const a = toRad(d);
+    ctx.strokeStyle = d % 90 === 0 ? "rgba(54,255,139,0.30)" : "rgba(54,255,139,0.12)";
+    ctx.beginPath(); ctx.moveTo(C, C); ctx.lineTo(C + Math.sin(a) * RR, C - Math.cos(a) * RR); ctx.stroke();
+  }
+  ctx.fillStyle = "#36ff8b"; ctx.font = "bold 26px monospace";
+  ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.fillText("N", C, C - RR - 18); ctx.fillText("S", C, C + RR + 18);
+  ctx.fillText("E", C + RR + 18, C); ctx.fillText("W", C - RR - 18, C);
+  ctx.textAlign = "start"; ctx.textBaseline = "alphabetic";
+  ctx.fillStyle = "#9bffc8"; ctx.beginPath(); ctx.arc(C, C, 5, 0, Math.PI*2); ctx.fill();
+}
+function drawSweep() {
+  ctx.save(); ctx.translate(C, C); ctx.rotate(toRad(sweepAngle));
+  const trail = 60;
+  for (let t = 0; t < trail; t++) {
+    const alpha = (1 - t / trail) * 0.16;
+    ctx.strokeStyle = "rgba(54,255,139," + alpha + ")"; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(0, 0);
+    const a = toRad(-t); ctx.lineTo(Math.sin(a) * RR, -Math.cos(a) * RR); ctx.stroke();
+  }
+  ctx.strokeStyle = "rgba(120,255,180,0.95)"; ctx.shadowColor = "rgba(54,255,139,0.9)";
+  ctx.shadowBlur = 18; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, -RR); ctx.stroke();
+  ctx.restore(); ctx.shadowBlur = 0;
+}
+function drawBlips() {
+  ctx.textAlign = "start";
+  for (const a of state.aircraft) {
+    const p = planeXY(a);
+    let rel = (sweepAngle - a.brg + 360) % 360;
+    let glow = Math.max(0, 1 - rel / 90); glow = 0.25 + glow * 0.75;
+    const sel = a.icao24 === state.selected;
+    ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(toRad(a.heading || 0));
+    ctx.fillStyle = sel ? "rgba(255,209,102," + glow + ")" : "rgba(54,255,139," + glow + ")";
+    ctx.shadowColor = sel ? "rgba(255,209,102,0.8)" : "rgba(54,255,139,0.8)";
+    ctx.shadowBlur = 10 * glow;
+    ctx.beginPath(); ctx.moveTo(0, -9); ctx.lineTo(6, 7); ctx.lineTo(0, 3); ctx.lineTo(-6, 7); ctx.closePath(); ctx.fill();
+    ctx.restore(); ctx.shadowBlur = 0;
+    ctx.fillStyle = sel ? "rgba(255,225,150," + (0.5+glow*0.5) + ")" : "rgba(150,255,200," + (0.35+glow*0.5) + ")";
+    ctx.font = (sel ? "bold " : "") + "18px monospace";
+    ctx.fillText(a.callsign, p.x + 10, p.y - 6);
+    if (sel || glow > 0.7) {
+      ctx.fillStyle = "rgba(120,220,170," + (0.3+glow*0.4) + ")"; ctx.font = "14px monospace";
+      ctx.fillText(fmtAlt(a.baro_alt), p.x + 10, p.y + 11);
+    }
+  }
+  state._screen = state.aircraft.map(a => { const p = planeXY(a); return { icao24: a.icao24, x: p.x, y: p.y }; });
+}
+function frame(t) {
+  const dt = t - lastFrame; lastFrame = t;
+  if (!state.paused) {
+    sweepAngle = (sweepAngle + (360 * dt) / CFG.sweepPeriodMs) % 360;
+    if (state.mode === "demo") stepDemo(dt);
+  }
+  drawGrid(); drawBlips(); drawSweep();
+  if (state.mode !== "demo" && state.nextFetch) {
+    const s = Math.max(0, Math.ceil((state.nextFetch - Date.now()) / 1000));
+    els.next.textContent = state.paused ? "paused" : s + "s";
+  } else { els.next.textContent = state.mode === "demo" ? "simulated" : "—"; }
+  requestAnimationFrame(frame);
+}
+els.canvas.addEventListener("click", e => {
+  const r = els.canvas.getBoundingClientRect();
+  const x = (e.clientX - r.left) * (SIZE / r.width);
+  const y = (e.clientY - r.top) * (SIZE / r.height);
+  let best = null, bd = 34;
+  for (const s of (state._screen || [])) {
+    const d = Math.hypot(s.x - x, s.y - y);
+    if (d < bd) { bd = d; best = s.icao24; }
+  }
+  state.selected = best; renderDetail();
+});
+els.rangeSel.addEventListener("change", () => {
+  state.rangeKm = parseInt(els.rangeSel.value, 10);
+  savePrefs(); updateReadout(); tick(true);
+});
+els.locate.addEventListener("click", requestLocation);
+els.pause.addEventListener("click", () => {
+  state.paused = !state.paused; els.pause.textContent = state.paused ? "Resume" : "Pause";
+});
+els.save.addEventListener("click", () => {
+  state.creds.cid = els.cid.value.trim(); state.creds.csec = els.csec.value.trim();
+  if (els.lat.value && els.lon.value) state.origin = { lat: parseFloat(els.lat.value), lon: parseFloat(els.lon.value) };
+  state.token = null; savePrefs();
+  if (state.origin) { setMode("live"); tick(true); } else { requestLocation(); }
+});
+els.demo.addEventListener("click", () => {
+  if (!state.origin) state.origin = { lat: 51.4700, lon: -0.4543 };
+  setMode("demo"); seedDemo(); updateReadout();
+});
+function requestLocation() {
+  if (!navigator.geolocation) { useFallbackLocation(); return; }
+  navigator.geolocation.getCurrentPosition(
+    pos => {
+      state.origin = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+      els.lat.value = state.origin.lat.toFixed(4); els.lon.value = state.origin.lon.toFixed(4);
+      savePrefs(); setMode("live"); updateReadout(); tick(true);
+    },
+    () => useFallbackLocation(),
+    { enableHighAccuracy: false, timeout: 8000, maximumAge: 60000 }
+  );
+}
+function useFallbackLocation() {
+  if (!state.origin) state.origin = { lat: 51.4700, lon: -0.4543 };
+  setMode("demo"); seedDemo(); updateReadout();
+}
+async function tick(force) {
+  if (state.mode === "demo") return;
+  if (!state.origin) return;
+  if (!force && Date.now() < state.nextFetch) return;
+  state.nextFetch = Date.now() + CFG.refreshMs;
+  try { await fetchAircraft(); } catch (e) { setMode("error", e.message); }
+}
+function boot() {
+  loadPrefs(); updateReadout(); setMode("demo"); seedDemo();
+  if (state.origin || (state.creds.cid && state.creds.csec)) {
+    if (!state.origin) requestLocation(); else { setMode("live"); tick(true); }
+  }
+  setInterval(() => tick(false), 1000);
+  requestAnimationFrame(frame);
+}
+boot();
+</script>
+</body>
+</html>
