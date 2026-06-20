@@ -189,7 +189,7 @@
       try { await dev.releaseInterface(0); } catch (e) {}
       try { await dev.close(); } catch (e) {}
     };
-    var LEN = 256 * 1024;
+    var LEN = 128 * 1024;  // smaller chunks = smoother UI
     runLoop(async function () {
       var r = await dev.transferIn(1, LEN);              // bulk IN endpoint 1
       if (!r || r.status !== "ok" || !r.data) return new Uint8Array(0);
@@ -242,7 +242,8 @@
           lat: a.lat, lon: a.lon, alt_baro: a.alt_baro != null ? a.alt_baro : null,
           gs: a.gs != null ? a.gs : null, track: a.track != null ? a.track : null,
           baro_rate: a.baro_rate != null ? a.baro_rate : null,
-          squawk: a.squawk || null, category: null, dbFlags: 0, t: null, r: null
+          squawk: a.squawk || null, category: null, dbFlags: 0, t: null, r: null,
+          pt: (a.posTime || a.seen || 0)   // last position-fix time (for smooth merge)
         });
       }
       return out;
