@@ -1,50 +1,28 @@
-/* R4D4RVU — in-browser RTL-SDR ADS-B decoder (EXPERIMENTAL).
+/* R4D4RVU — in-browser SDR ADS-B decoder (EXPERIMENTAL).
  *
- * Talks to an RTL-SDR dongle directly over WebUSB and decodes 1090 MHz Mode-S
+ * Talks to an SDR dongle directly over WebUSB and decodes 1090 MHz Mode-S
  * (ADS-B) in the browser — no Docker, no terminal, nothing installed.
  *
- * Radio layer:  rtlsdrjs by Sandeep Mistry (Apache-2.0), loaded at runtime.
- * Demodulator:  mode-s-demodulator + mode-s-decoder by Thomas Watson (MIT).
+ *   • RTL-SDR  — via rtlsdrjs (Apache-2.0, Sandeep Mistry).
+ *   • HackRF One (EXPERIMENTAL, unverified) — minimal WebUSB driver based on
+ *     the libhackrf USB protocol (see mildsunrise/hackrf.js, MIT).
  *
- * Requires desktop Chrome/Edge (WebUSB). On Linux you may need to unload the
- * dvb_usb_rtl28xxu kernel module once so the browser can claim the device.
+ * Demodulation: mode-s-demodulator + mode-s-decoder (Thomas Watson, MIT).
+ * Both vendored locally (rtlsdr.bundle.js / mode-s-demodulator.bundle.js) so
+ * the in-browser decoder works fully offline; falls back to CDN if missing.
  *
- * Exposes window.R4SDR: { supported, status, start(onStatus), stop(), getAircraft() }.
+ * Desktop Chrome/Edge only (WebUSB). On Linux you may need to unload the
+ * dvb_usb_rtl28xxu kernel module (RTL-SDR) or install the WinUSB driver
+ * (HackRF, via Zadig on Windows) so the browser can claim the device.
+ *
+ * Exposes window.R4SDR: { supported, status, start(kind,onStatus), stop(), getAircraft() }
+ *   kind = "rtl" (default) | "hackrf".
  */
 (function () {
   "use strict";
 
-  var GH = "https://cdn.jsdelivr.net/gh/sandeepmistry/rtlsdrjs@master/lib/";
-  var FILES = { usb: "web-usb.js", rtlcom: "rtlcom.js", r820t: "r820t.js", rtl2832u: "rtl2832u.js", rtlsdr: "rtlsdr.js" };
-
-  var _mods = {}, _cache = {}, RtlSdr = null, Demodulator = null;
-
-  // Load the CommonJS rtlsdrjs files and wire them together with a tiny require shim.
-  function loadScript(src){ return new Promise(function(res,rej){ var sc=document.createElement("script"); sc.src=src; sc.onload=res; sc.onerror=function(){rej(new Error("load "+src));}; document.head.appendChild(sc); }); }
-  async function loadRtlSdr() {
-    if (RtlSdr) return RtlSdr;
-    if (window.RtlSdr) { RtlSdr = window.RtlSdr; return RtlSdr; }
-    // Prefer the local vendored bundle (works fully offline); fall back to CDN.
-    try { await loadScript("./rtlsdr.bundle.js"); if (window.RtlSdr) { RtlSdr = window.RtlSdr; return RtlSdr; } } catch (e) {}
-    var srcs = {};
-    await Promise.all(Object.keys(FILES).map(async function (k) {
-      var r = await fetch(GH + FILES[k]);
-      if (!r.ok) throw new Error("Failed to load radio driver (" + FILES[k] + ")");
-      srcs[k] = await r.text();
-    }));
-    for (var k in srcs) _mods[k] = new Function("require", "module", "exports", srcs[k]);
-    function req(name) {
-      name = name.replace(/^\.\//, "");
-      if (_cache[name]) return _cache[name].exports;
-      var m = { exports: {} };
-      _cache[name] = m;
-      _mods[name](req, m, m.exports);
-      return m.exports;
-    }
-    RtlSdr = req("rtlsdr");
-    return RtlSdr;
-  }
-
+  // ---------------- shared demodulator + aircraft pipeline ----------------
+  var Demodulator = null;
   async function loadDemod() {
     if (Demodulator) return Demodulator;
     try { var lm = await import("./mode-s-demodulator.bundle.js"); Demodulator = lm.default || lm; if (Demodulator) return Demodulator; } catch (e) {}
@@ -53,7 +31,7 @@
     return Demodulator;
   }
 
-  // ---------- CPR (Compact Position Reporting) global airborne decode ----------
+  // CPR global airborne position decode
   function cprMod(a, b) { var r = a % b; return r < 0 ? r + b : r; }
   function cprNL(lat) {
     if (lat === 0) return 59;
@@ -88,7 +66,6 @@
     return { lat: lat, lon: lon };
   }
 
-  // ---------- per-aircraft state from decoded messages ----------
   var planes = {};
   function handle(mm) {
     if (!mm || !mm.icao) return;
@@ -118,55 +95,131 @@
     }
   }
 
-  // ---------- public API ----------
-  var sdr = null, running = false, status = "idle", onStatusCb = null;
+  var running = false, status = "idle", onStatusCb = null, activeStop = null;
   function setStatus(s) { status = s; if (onStatusCb) try { onStatusCb(s); } catch (e) {} }
 
-  async function loop() {
+  // readChunk() must resolve to a Uint8Array of interleaved I/Q bytes that the
+  // demodulator expects (unsigned, centered ~127).
+  async function runLoop(readChunk) {
     var demod = new Demodulator({ aggressive: true });
-    var CHUNK = 128 * 1024; // samples per read
     while (running) {
-      var buf;
-      try { buf = await sdr.readSamples(CHUNK); }
-      catch (e) { setStatus("USB read error — is the dongle still plugged in?"); break; }
-      if (!buf) continue;
-      var data = new Uint8Array(buf);
+      var data;
+      try { data = await readChunk(); }
+      catch (e) { setStatus("USB read error — is the device still connected?"); break; }
+      if (!data || !data.length) continue;
       try { demod.process(data, data.length, handle); } catch (e) { /* keep going */ }
-      // prune stale aircraft (>60s) and let the UI breathe
       var now = Date.now();
       for (var h in planes) if (now - (planes[h].seen || 0) > 60000) delete planes[h];
       await new Promise(function (r) { setTimeout(r, 0); });
     }
   }
 
+  // ---------------- RTL-SDR backend (rtlsdrjs) ----------------
+  var GH = "https://cdn.jsdelivr.net/gh/sandeepmistry/rtlsdrjs@master/lib/";
+  var FILES = { usb: "web-usb.js", rtlcom: "rtlcom.js", r820t: "r820t.js", rtl2832u: "rtl2832u.js", rtlsdr: "rtlsdr.js" };
+  var _mods = {}, _cache = {}, RtlSdr = null;
+  function loadScript(src) { return new Promise(function (res, rej) { var sc = document.createElement("script"); sc.src = src; sc.onload = res; sc.onerror = function () { rej(new Error("load " + src)); }; document.head.appendChild(sc); }); }
+  async function loadRtlSdr() {
+    if (RtlSdr) return RtlSdr;
+    if (window.RtlSdr) { RtlSdr = window.RtlSdr; return RtlSdr; }
+    try { await loadScript("./rtlsdr.bundle.js"); if (window.RtlSdr) { RtlSdr = window.RtlSdr; return RtlSdr; } } catch (e) {}
+    var srcs = {};
+    await Promise.all(Object.keys(FILES).map(async function (k) {
+      var r = await fetch(GH + FILES[k]);
+      if (!r.ok) throw new Error("Failed to load radio driver (" + FILES[k] + ")");
+      srcs[k] = await r.text();
+    }));
+    for (var k in srcs) _mods[k] = new Function("require", "module", "exports", srcs[k]);
+    function req(name) { name = name.replace(/^\.\//, ""); if (_cache[name]) return _cache[name].exports; var m = { exports: {} }; _cache[name] = m; _mods[name](req, m, m.exports); return m.exports; }
+    RtlSdr = req("rtlsdr");
+    return RtlSdr;
+  }
+
+  async function startRtl() {
+    setStatus("loading decoder…");
+    await Promise.all([loadRtlSdr(), loadDemod()]);
+    setStatus("select your RTL-SDR dongle…");
+    var sdr = await RtlSdr.requestDevice();
+    setStatus("starting radio…");
+    await sdr.open({ ppm: 0.5 });
+    await sdr.setSampleRate(2000000);
+    await sdr.setCenterFrequency(1090000000);
+    await sdr.resetBuffer();
+    running = true; setStatus("decoding");
+    activeStop = async function () { try { await sdr.close(); } catch (e) {} };
+    runLoop(async function () { return new Uint8Array(await sdr.readSamples(128 * 1024)); });
+  }
+
+  // ---------------- HackRF One backend (EXPERIMENTAL WebUSB) ----------------
+  // Vendor requests (libhackrf): see mildsunrise/hackrf.js / great scott gadgets.
+  var HRF = { VID: 0x1d50, PIDS: [0x6089, 0x604b, 0xcc15],
+    SET_TRANSCEIVER_MODE: 1, SAMPLE_RATE_SET: 6, BASEBAND_FILTER_BANDWIDTH_SET: 7,
+    SET_FREQ: 16, AMP_ENABLE: 17, SET_LNA_GAIN: 19, SET_VGA_GAIN: 20, MODE_OFF: 0, MODE_RX: 1 };
+  function u32le(v) { return [v & 0xff, (v >>> 8) & 0xff, (v >>> 16) & 0xff, (v >>> 24) & 0xff]; }
+  async function startHackrf() {
+    setStatus("loading decoder…");
+    await loadDemod();
+    setStatus("select your HackRF…");
+    var dev = await navigator.usb.requestDevice({ filters: HRF.PIDS.map(function (p) { return { vendorId: HRF.VID, productId: p }; }) });
+    setStatus("starting HackRF…");
+    await dev.open();
+    if (dev.configuration === null) await dev.selectConfiguration(1);
+    await dev.claimInterface(0);
+    function out(request, value, index, data) {
+      return dev.controlTransferOut({ requestType: "vendor", recipient: "device", request: request, value: value & 0xffff, index: index & 0xffff }, data || new Uint8Array(0));
+    }
+    function inn(request, value, index, length) {
+      return dev.controlTransferIn({ requestType: "vendor", recipient: "device", request: request, value: value & 0xffff, index: index & 0xffff }, length);
+    }
+    // sample rate 2 MHz (freq=2000000, divider=1)
+    await out(HRF.SAMPLE_RATE_SET, 0, 0, new Uint8Array(u32le(2000000).concat(u32le(1))));
+    // baseband filter 1.75 MHz
+    var bw = 1750000; await out(HRF.BASEBAND_FILTER_BANDWIDTH_SET, bw & 0xffff, (bw >>> 16) & 0xffff);
+    // tune 1090 MHz  (freq_mhz=1090, freq_hz=0)
+    await out(HRF.SET_FREQ, 0, 0, new Uint8Array(u32le(1090).concat(u32le(0))));
+    // gains: LNA 32 dB (step 8, ≤40), VGA 48 dB (step 2, ≤62), amp off
+    await inn(HRF.SET_LNA_GAIN, 0, 32, 1);
+    await inn(HRF.SET_VGA_GAIN, 0, 48, 1);
+    await out(HRF.AMP_ENABLE, 0, 0);
+    // RX on
+    await out(HRF.SET_TRANSCEIVER_MODE, HRF.MODE_RX, 0);
+    running = true; setStatus("decoding");
+    activeStop = async function () {
+      try { await out(HRF.SET_TRANSCEIVER_MODE, HRF.MODE_OFF, 0); } catch (e) {}
+      try { await dev.releaseInterface(0); } catch (e) {}
+      try { await dev.close(); } catch (e) {}
+    };
+    var LEN = 256 * 1024;
+    runLoop(async function () {
+      var r = await dev.transferIn(1, LEN);              // bulk IN endpoint 1
+      if (!r || r.status !== "ok" || !r.data) return new Uint8Array(0);
+      var b = new Uint8Array(r.data.buffer, r.data.byteOffset, r.data.byteLength);
+      // HackRF samples are signed int8; convert to offset-binary uint8 (XOR sign bit)
+      var o = new Uint8Array(b.length);
+      for (var i = 0; i < b.length; i++) o[i] = b[i] ^ 0x80;
+      return o;
+    });
+  }
+
+  // ---------------- public API ----------------
   window.R4SDR = {
     supported: typeof navigator !== "undefined" && !!navigator.usb,
     get status() { return status; },
     set onStatus(fn) { onStatusCb = fn; },
 
-    async start(onStatus) {
+    async start(kind, onStatus) {
       onStatusCb = onStatus || onStatusCb;
       if (!this.supported) { setStatus("WebUSB unsupported — use desktop Chrome or Edge"); throw new Error(status); }
       try {
-        setStatus("loading decoder…");
-        await Promise.all([loadRtlSdr(), loadDemod()]);
-        setStatus("select your RTL-SDR dongle…");
-        sdr = await RtlSdr.requestDevice();          // shows the browser USB picker (needs a click)
-        setStatus("starting radio…");
-        await sdr.open({ ppm: 0.5 });
-        await sdr.setSampleRate(2000000);            // 2 MS/s — required by the demodulator
-        await sdr.setCenterFrequency(1090000000);    // 1090 MHz ADS-B
-        await sdr.resetBuffer();
-        running = true;
-        setStatus("decoding");
-        loop();
+        if (kind === "hackrf") await startHackrf();
+        else await startRtl();
         return true;
       } catch (e) {
         running = false;
         var msg = (e && e.message) || String(e);
-        if (/No device selected/i.test(msg)) setStatus("no dongle selected");
-        else if (/unsupported tuner/i.test(msg)) setStatus("unsupported tuner (needs R820T/R820T2)");
-        else if (/claim|access|SecurityError|protected/i.test(msg)) setStatus("could not claim device (close other SDR apps; on Linux unload dvb_usb_rtl28xxu)");
+        if (/No device selected/i.test(msg)) setStatus("no device selected");
+        else if (/unsupported tuner/i.test(msg)) setStatus("unsupported tuner (RTL needs R820T/R820T2)");
+        else if (/claim|access|SecurityError|protected|interface/i.test(msg)) setStatus("could not claim device (close other SDR apps; Win: WinUSB via Zadig; Linux: unload kernel driver)");
         else setStatus("error: " + msg);
         throw e;
       }
@@ -174,12 +227,10 @@
 
     async stop() {
       running = false;
-      try { if (sdr) await sdr.close(); } catch (e) {}
-      sdr = null; setStatus("stopped");
+      if (activeStop) { try { await activeStop(); } catch (e) {} activeStop = null; }
+      setStatus("stopped");
     },
 
-    // Returns aircraft with a known position, in the same raw shape the app
-    // already parses from airplanes.live / readsb.
     getAircraft() {
       var out = [], now = Date.now();
       for (var h in planes) {
