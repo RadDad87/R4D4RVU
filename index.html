@@ -245,6 +245,17 @@
             <input id="sdrurl" type="text" autocomplete="off" placeholder="http://localhost:8080/data/aircraft.json" />
             <p class="hint">Run dump1090-fa, readsb, or dump1090_sdrplus with an RTL-SDR, HackRF One, or other SDR. Because browsers block an https page from reading http://localhost, serve this app from the same machine (open it over http/localhost) so it can reach the feed. Set your receiver location below.</p>
           </div>
+          <div class="field" id="rxPanel" style="display:none;">
+            <p class="hint" id="rxHealth">RX health: start an in-browser SDR to see decode stats…</p>
+            <div id="gainBox" style="display:none;">
+              <label for="lnaGain">HackRF LNA gain — <span id="lnaVal">32</span> dB</label>
+              <input id="lnaGain" type="range" min="0" max="40" step="8" value="32" />
+              <label for="vgaGain">HackRF VGA gain — <span id="vgaVal">48</span> dB</label>
+              <input id="vgaGain" type="range" min="0" max="62" step="2" value="48" />
+              <label style="display:flex;align-items:center;gap:8px;margin-top:6px;"><input id="ampGain" type="checkbox" /> RF amp (+~14 dB — only for weak signals)</label>
+              <p class="hint">Raise gain to reach distant aircraft; lower it (or turn the amp off) if you are near an airport and the decode rate stalls.</p>
+            </div>
+          </div>
           <div class="row">
             <div class="field"><label for="lat">Latitude</label><input id="lat" type="number" step="0.0001" placeholder="auto" /></div>
             <div class="field"><label for="lon">Longitude</label><input id="lon" type="number" step="0.0001" placeholder="auto" /></div>
@@ -907,6 +918,8 @@ els.source.addEventListener("change", async () => {
   const isUsb = (state.source === "usb" || state.source === "hackrf");
   els.sdrField.style.display = state.source === "sdr" ? "block" : "none";
   const uh = document.getElementById("usbHint"); if (uh) uh.style.display = isUsb ? "block" : "none";
+  const rxp = document.getElementById("rxPanel"); if (rxp) rxp.style.display = isUsb ? "block" : "none";
+  const gnb = document.getElementById("gainBox"); if (gnb) gnb.style.display = (state.source === "hackrf") ? "block" : "none";
   savePrefs(); updateReadout();
   if (isUsb) {
     if (!window.R4SDR || !window.R4SDR.supported) { setMode("error", "WebUSB needs desktop Chrome/Edge"); return; }
@@ -922,6 +935,26 @@ els.source.addEventListener("change", async () => {
     } catch (e) {}
   } else if (state.origin) { setMode("live"); tick(true); }
 });
+
+// in-browser SDR: gain controls (HackRF) + decode-health readout
+(function () {
+  const lna = document.getElementById("lnaGain"), vga = document.getElementById("vgaGain"), amp = document.getElementById("ampGain");
+  const lnaVal = document.getElementById("lnaVal"), vgaVal = document.getElementById("vgaVal");
+  function applyGains() { if (window.R4SDR && window.R4SDR.setGains) window.R4SDR.setGains({ lna: +lna.value, vga: +vga.value, amp: amp.checked ? 1 : 0 }); }
+  if (lna) lna.addEventListener("input", () => { lnaVal.textContent = lna.value; applyGains(); });
+  if (vga) vga.addEventListener("input", () => { vgaVal.textContent = vga.value; applyGains(); });
+  if (amp) amp.addEventListener("change", applyGains);
+  let lastMsgs = 0, lastT = Date.now();
+  setInterval(() => {
+    const rx = document.getElementById("rxHealth"); if (!rx) return;
+    const usb = (state.source === "usb" || state.source === "hackrf");
+    if (!usb || !window.R4SDR || !window.R4SDR.stats) return;
+    const st = window.R4SDR.stats, now = Date.now(), dt = (now - lastT) / 1000;
+    const rate = dt > 0 ? Math.max(0, (st.messages - lastMsgs) / dt) : 0;
+    lastMsgs = st.messages; lastT = now;
+    rx.textContent = "RX health: " + rate.toFixed(0) + " msgs/s · " + st.positioned + " with position · " + st.tracked + " tracked";
+  }, 1000);
+})();
 els.sdrUrlInput.addEventListener("change", () => {
   if (els.sdrUrlInput.value.trim()) state.sdrUrl = els.sdrUrlInput.value.trim();
   savePrefs();
