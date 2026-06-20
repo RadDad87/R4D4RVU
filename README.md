@@ -25,7 +25,7 @@ R4D4RVU centers a vintage CRT-style radar scope on your location and plots every
 - **Scope HUD** — live closest / highest / fastest aircraft, plus an **"overhead" alert** when a plane passes within 1.5 mi of you.
 - **Sonar ping & trails** — optional retro 'ping' as the sweep passes each contact (pitch rises with altitude), and fading breadcrumb trails showing each plane's recent track.
 - **Sound presets** — choose between Sonar, Sub, Blip, and Soft ping voices.
-- **Themes & light/dark** — recolour the whole scope (Green, Amber, Ice, Alert) and switch the UI between dark and light.
+- **Themes** — recolour the whole scope: Green, Amber, Ice, or Alert.
 - **Shareable flight links** — copy a link that opens the radar on your location and locks onto the selected aircraft for whoever you send it to.
 - **Miles** — selectable range of 15, 30, 60, 150, or 300 miles.
 - **Demo mode** — a simulated fleet so it works offline or with location disabled.
@@ -70,7 +70,6 @@ Because the whole app is a single `index.html` at the repo root:
 | **🎯 Track this aircraft** | Lock onto the selected plane — homing line, pulsing ring, pinned details. Tap again to release. |
 | **🔗 Share** | Copy a link that re-opens the radar tracking the selected flight. |
 | **🎨 Theme** | Cycle the colour scheme: Green → Amber → Ice → Alert. |
-| **◐ Light / ◑ Dark** | Toggle a light or dark interface. |
 | **🔉 Sound preset** | Cycle the ping voice: Sonar → Sub → Blip → Soft. |
 | **Demo mode** | Runs a simulated fleet (incl. a military & an emergency aircraft) — works offline. |
 | **Click a blip** | Opens the **Contact** readout for that aircraft. |
