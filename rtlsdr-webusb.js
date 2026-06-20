@@ -69,6 +69,7 @@
   var planes = {};
   function handle(mm) {
     if (!mm || !mm.icao) return;
+    totalMsgs++;
     var hex = (mm.icao >>> 0).toString(16).padStart(6, "0");
     var ac = planes[hex] || (planes[hex] = { hex: hex });
     ac.seen = Date.now();
@@ -96,6 +97,8 @@
   }
 
   var running = false, status = "idle", onStatusCb = null, activeStop = null;
+  var totalMsgs = 0, hrfDev = null;
+  var hrfGains = { lna: 32, vga: 48, amp: 0 };   // HackRF gains (dB / amp 0|1)
   function setStatus(s) { status = s; if (onStatusCb) try { onStatusCb(s); } catch (e) {} }
 
   // readChunk() must resolve to a Uint8Array of interleaved I/Q bytes that the
@@ -165,6 +168,7 @@
     await dev.open();
     if (dev.configuration === null) await dev.selectConfiguration(1);
     await dev.claimInterface(0);
+    hrfDev = dev;
     function out(request, value, index, data) {
       return dev.controlTransferOut({ requestType: "vendor", recipient: "device", request: request, value: value & 0xffff, index: index & 0xffff }, data || new Uint8Array(0));
     }
@@ -177,10 +181,10 @@
     var bw = 1750000; await out(HRF.BASEBAND_FILTER_BANDWIDTH_SET, bw & 0xffff, (bw >>> 16) & 0xffff);
     // tune 1090 MHz  (freq_mhz=1090, freq_hz=0)
     await out(HRF.SET_FREQ, 0, 0, new Uint8Array(u32le(1090).concat(u32le(0))));
-    // gains: LNA 32 dB (step 8, ≤40), VGA 48 dB (step 2, ≤62), amp off
-    await inn(HRF.SET_LNA_GAIN, 0, 32, 1);
-    await inn(HRF.SET_VGA_GAIN, 0, 48, 1);
-    await out(HRF.AMP_ENABLE, 0, 0);
+    // gains (user-adjustable): LNA 0-40/8, VGA 0-62/2, amp 0|1
+    await inn(HRF.SET_LNA_GAIN, 0, hrfGains.lna, 1);
+    await inn(HRF.SET_VGA_GAIN, 0, hrfGains.vga, 1);
+    await out(HRF.AMP_ENABLE, hrfGains.amp, 0);
     // RX on
     await out(HRF.SET_TRANSCEIVER_MODE, HRF.MODE_RX, 0);
     running = true; setStatus("decoding");
@@ -188,6 +192,7 @@
       try { await out(HRF.SET_TRANSCEIVER_MODE, HRF.MODE_OFF, 0); } catch (e) {}
       try { await dev.releaseInterface(0); } catch (e) {}
       try { await dev.close(); } catch (e) {}
+      hrfDev = null;
     };
     var LEN = 128 * 1024;  // smaller chunks = smoother UI
     runLoop(async function () {
@@ -201,11 +206,36 @@
     });
   }
 
+  // live HackRF gain control
+  async function applyHrfGains() {
+    var d = hrfDev; if (!d) return;
+    function gin(req, idx) { return d.controlTransferIn({ requestType: "vendor", recipient: "device", request: req, value: 0, index: idx & 0xffff }, 1); }
+    function gout(req, val) { return d.controlTransferOut({ requestType: "vendor", recipient: "device", request: req, value: val & 0xffff, index: 0 }, new Uint8Array(0)); }
+    try {
+      await gin(HRF.SET_LNA_GAIN, hrfGains.lna);
+      await gin(HRF.SET_VGA_GAIN, hrfGains.vga);
+      await gout(HRF.AMP_ENABLE, hrfGains.amp);
+    } catch (e) {}
+  }
+
   // ---------------- public API ----------------
   window.R4SDR = {
     supported: typeof navigator !== "undefined" && !!navigator.usb,
     get status() { return status; },
     set onStatus(fn) { onStatusCb = fn; },
+
+    get stats() {
+      var pos = 0, tot = 0;
+      for (var h in planes) { tot++; if (planes[h].lat != null && planes[h].lon != null) pos++; }
+      return { messages: totalMsgs, positioned: pos, tracked: tot };
+    },
+    getGains() { return { lna: hrfGains.lna, vga: hrfGains.vga, amp: hrfGains.amp }; },
+    async setGains(g) {
+      if (g.lna != null) hrfGains.lna = g.lna;
+      if (g.vga != null) hrfGains.vga = g.vga;
+      if (g.amp != null) hrfGains.amp = g.amp ? 1 : 0;
+      await applyHrfGains();
+    },
 
     async start(kind, onStatus) {
       onStatusCb = onStatus || onStatusCb;
