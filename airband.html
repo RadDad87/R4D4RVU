@@ -70,6 +70,19 @@
 
   <div class="card">
     <div class="row">
+      <select id="scanScope" style="flex:2;">
+        <option value="all">Scan: all channels</option>
+        <option value="DCA">Scan: DCA — Reagan National</option>
+        <option value="IAD">Scan: IAD — Dulles</option>
+        <option value="BWI">Scan: BWI — Baltimore/Washington</option>
+      </select>
+      <button id="scanBtn">📡 Scan</button>
+    </div>
+    <div class="status" id="scanStatus">Scanner cycles channels and stops on any with activity, then resumes when it goes quiet. (Start the radio first.)</div>
+  </div>
+
+  <div class="card">
+    <div class="row">
       <button id="start" class="primary">▶ Start (pick HackRF)</button>
       <button id="stop" disabled>■ Stop</button>
     </div>
@@ -271,6 +284,7 @@
 
   presetSel.addEventListener("change", ()=>{
     const o = presetSel.selectedOptions[0]; if(!o || !o.value) return;
+    if(scanOn) stopScan(false);
     tune(parseFloat(o.value), o.dataset.name);
   });
   $("tuneManual").addEventListener("click", ()=>{
@@ -283,6 +297,50 @@
   $("squelch").addEventListener("input", e=>{ squelch = (e.target.value/100)*0.12; });
   $("volume").addEventListener("input", e=>{ volume = e.target.value/100; if(masterGain) masterGain.gain.value = volume; });
   squelch = (14/100)*0.12;
+
+  // ---- scanner ----
+  let scanOn=false, scanList=[], scanIdx=-1, scanHold=false, lastActiveT=0, dwellT=0, retuning=false;
+  const SCAN_DWELL=500, SCAN_RESUME=1500;
+  function buildScanList(){
+    const scope=$("scanScope").value, out=[];
+    PRESETS.forEach(g=>{ if(scope==="all" || g.g.indexOf(scope)===0) g.items.forEach(it=>out.push({name:it[0], mhz:it[1]})); });
+    return out;
+  }
+  async function advanceScan(){
+    if(!scanList.length) return;
+    scanIdx=(scanIdx+1)%scanList.length;
+    const c=scanList[scanIdx];
+    retuning=true; try{ await setHwFreq(c.mhz); freqMHz=c.mhz; setFreqDisplay(); $("freqLabel").textContent=c.name; }catch(e){} retuning=false;
+    dwellT=performance.now();
+  }
+  async function scanTick(){
+    if(!scanOn) return;
+    if(!running){ stopScan("radio stopped — start it, then Scan."); return; }
+    if(retuning) return;
+    const now=performance.now(), active = dcEMA > squelch*1.4;
+    if(scanHold){
+      if(active) lastActiveT=now;
+      else if(now-lastActiveT > SCAN_RESUME){ scanHold=false; dwellT=now; await advanceScan(); }
+      $("scanStatus").textContent="● holding "+freqMHz.toFixed(3)+" MHz — "+(scanList[scanIdx]?scanList[scanIdx].name:"");
+    } else {
+      if(active){ scanHold=true; lastActiveT=now; }
+      else if(now-dwellT > SCAN_DWELL){ await advanceScan(); }
+      if(!scanHold) $("scanStatus").textContent="scanning… "+freqMHz.toFixed(3)+" MHz ("+(scanIdx+1)+"/"+scanList.length+")";
+    }
+  }
+  function startScan(){
+    if(!running){ status("Start the radio first, then hit Scan."); return; }
+    scanList=buildScanList(); if(!scanList.length) return;
+    scanOn=true; scanHold=false; scanIdx=-1;
+    $("scanBtn").textContent="■ Stop scan"; $("scanBtn").classList.add("primary");
+    advanceScan();
+  }
+  function stopScan(msg){
+    scanOn=false; $("scanBtn").textContent="📡 Scan"; $("scanBtn").classList.remove("primary");
+    if(msg!==false) $("scanStatus").textContent = msg || "scan stopped.";
+  }
+  $("scanBtn").addEventListener("click", ()=>{ scanOn ? stopScan() : startScan(); });
+  setInterval(scanTick, 150);
 
   $("start").addEventListener("click", startRadio);
   $("stop").addEventListener("click", stopRadio);
