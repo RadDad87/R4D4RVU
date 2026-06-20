@@ -242,7 +242,7 @@
   <footer>Live data &copy; <a href="https://airplanes.live" target="_blank" rel="noopener">airplanes.live</a> contributors. Positions are approximate and for hobby/educational use only — not for navigation.</footer>
 <script>
 "use strict";
-const CFG = { dataUrl: "https://api.airplanes.live/v2/point/", refreshMs: 12000, sweepPeriodMs: 4000, trailMs: 75000 };
+const CFG = { dataUrl: "https://api.airplanes.live/v2/point/", refreshMs: 12000, sweepPeriodMs: 4000, trailMiles: 15, goneMs: 20000 };
 const KM_PER_MI = 1.60934, MI_PER_KM = 0.621371, KM_PER_NM = 1.852;
 const THEMES = {
   green: { name:"Green", accent:"#36ff8b", dim:"#1f9c54", faint:"rgba(54,255,139,0.18)", rgb:[54,255,139], text:"#b8ffd4", bg:"radial-gradient(circle at 50% 50%, #053a1d 0%, #021c0d 60%, #001206 100%)" },
@@ -602,11 +602,12 @@ function drawTrails(now) {
   for (const id in trails) {
     const pts = trails[id];
     if (!pts || pts.length < 2) continue;
+    const headD = pts[pts.length - 1].d;
     for (let i = 1; i < pts.length; i++) {
-      const age = now - pts[i].t, a0 = Math.max(0, 1 - age / CFG.trailMs);
+      const a0 = Math.max(0, 1 - (headD - pts[i].d) / CFG.trailMiles);
       if (a0 <= 0) continue;
       const col = pts[i].col;
-      ctx.strokeStyle = "rgba(" + col[0] + "," + col[1] + "," + col[2] + "," + (a0 * 0.35) + ")";
+      ctx.strokeStyle = "rgba(" + col[0] + "," + col[1] + "," + col[2] + "," + (a0 * 0.4) + ")";
       ctx.lineWidth = 2;
       ctx.beginPath(); ctx.moveTo(pts[i-1].x, pts[i-1].y); ctx.lineTo(pts[i].x, pts[i].y); ctx.stroke();
     }
@@ -669,8 +670,12 @@ function drawBlips(now) {
     if (state.trailsOn) {
       const arr = trails[a.icao24] || (trails[a.icao24] = []);
       const last = arr[arr.length - 1];
-      if (!last || Math.hypot(last.x - p.x, last.y - p.y) > 1.4) arr.push({ x: p.x, y: p.y, t: now, col });
-      while (arr.length && now - arr[0].t > CFG.trailMs) arr.shift();
+      if (!last || Math.hypot(last.x - p.x, last.y - p.y) > 1.4) {
+        const d = last ? last.d + Math.hypot(p.x - last.x, p.y - last.y) * (state.rangeMi / RR) : 0;
+        arr.push({ x: p.x, y: p.y, t: now, col, d });
+      }
+      const headD = arr.length ? arr[arr.length - 1].d : 0;
+      while (arr.length > 1 && headD - arr[0].d > CFG.trailMiles) arr.shift();
     }
     if (sel) {
       ctx.strokeStyle = "rgba(255,225,150,0.9)"; ctx.lineWidth = 2;
@@ -707,7 +712,7 @@ function drawBlips(now) {
   }
   // prune stale trails for gone aircraft
   const live = new Set(_vis.map(a => a.icao24));
-  for (const id in trails) { if (!live.has(id)) { while (trails[id].length && now - trails[id][0].t > CFG.trailMs) trails[id].shift(); if (!trails[id].length) delete trails[id]; } }
+  for (const id in trails) { if (!live.has(id)) { const pp = trails[id]; if (!pp.length || now - pp[pp.length - 1].t > CFG.goneMs) delete trails[id]; } }
   state._screen = _vis.map(a => { const p = planeXY(a); return { icao24: a.icao24, x: p.x, y: p.y }; });
 }
 function crossed(prev, cur, b) { return prev <= cur ? (b > prev && b <= cur) : (b > prev || b <= cur); }
