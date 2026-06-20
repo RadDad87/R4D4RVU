@@ -242,7 +242,7 @@
   <footer>Live data &copy; <a href="https://airplanes.live" target="_blank" rel="noopener">airplanes.live</a> contributors. Positions are approximate and for hobby/educational use only — not for navigation.</footer>
 <script>
 "use strict";
-const CFG = { dataUrl: "https://api.airplanes.live/v2/point/", refreshMs: 12000, sweepPeriodMs: 4000, trailMs: 30000 };
+const CFG = { dataUrl: "https://api.airplanes.live/v2/point/", refreshMs: 12000, sweepPeriodMs: 4000, trailMs: 75000 };
 const KM_PER_MI = 1.60934, MI_PER_KM = 0.621371, KM_PER_NM = 1.852;
 const THEMES = {
   green: { name:"Green", accent:"#36ff8b", dim:"#1f9c54", faint:"rgba(54,255,139,0.18)", rgb:[54,255,139], text:"#b8ffd4", bg:"radial-gradient(circle at 50% 50%, #053a1d 0%, #021c0d 60%, #001206 100%)" },
@@ -393,6 +393,20 @@ function stepDemo(dt) {
   }
   list.sort((p, q) => p.dist - q.dist);
   state.aircraft = list; state.lastFetch = now;
+}
+function advanceAircraft(dtMs) {
+  if (!state.origin) return;
+  const dt = dtMs / 1000;
+  for (const a of state.aircraft) {
+    if (a.onGround || a.velocity == null || a.heading == null || a.lat == null) continue;
+    const mps = a.velocity * 0.514444;           // knots -> m/s
+    const dMeters = mps * dt;
+    a.lat += (dMeters * Math.cos(toRad(a.heading))) / 111320;
+    a.lon += (dMeters * Math.sin(toRad(a.heading))) / (111320 * Math.cos(toRad(a.lat)) || 1e-6);
+    const pos = { lat: a.lat, lon: a.lon };
+    a.dist = haversine(state.origin, pos);
+    a.brg = bearing(state.origin, pos);
+  }
 }
 function setMode(m, msg) {
   state.mode = m;
@@ -580,7 +594,7 @@ function drawBlips(now) {
     if (state.trailsOn) {
       const arr = trails[a.icao24] || (trails[a.icao24] = []);
       const last = arr[arr.length - 1];
-      if (!last || Math.hypot(last.x - p.x, last.y - p.y) > 2) arr.push({ x: p.x, y: p.y, t: now, col });
+      if (!last || Math.hypot(last.x - p.x, last.y - p.y) > 1.4) arr.push({ x: p.x, y: p.y, t: now, col });
       while (arr.length && now - arr[0].t > CFG.trailMs) arr.shift();
     }
     if (sel) {
@@ -670,6 +684,7 @@ function frame(t) {
     sweepPrev = sweepAngle;
     sweepAngle = (sweepAngle + (360 * dt) / CFG.sweepPeriodMs) % 360;
     if (state.mode === "demo") stepDemo(dt);
+    else if (state.mode === "live") advanceAircraft(dt);
     if (state.soundOn && state.aircraft.length) {
       let fired = 0;
       for (const a of visList()) {
