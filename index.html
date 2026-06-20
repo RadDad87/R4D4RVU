@@ -190,8 +190,8 @@
           <span><i style="color:#36ff8b;background:#36ff8b"></i>10–20k</span>
           <span><i style="color:#36ffd1;background:#36ffd1"></i>20–30k</span>
           <span><i style="color:#36c8ff;background:#36c8ff"></i>30k+</span>
-          <span><i style="color:#ff5d5d;background:#ff5d5d"></i>emergency</span>
-          <span><i style="color:#ff9d3c;background:#ff9d3c"></i>military</span>
+          <span><i style="color:#ff2b2b;background:#ff2b2b"></i>mil / police / SAR</span>
+          <span><i style="color:#ff4fd8;background:#ff4fd8"></i>emergency</span>
           <span><i style="color:#c77dff;background:#c77dff"></i>gov/special</span>
         </div>
       </div>
@@ -320,6 +320,7 @@ function bearing(a, b) {
   return (toDeg(Math.atan2(y, x)) + 360) % 360;
 }
 const EMERG = { "7500": "hijack", "7600": "radio fail", "7700": "emergency" };
+const RESP_RE = /(POLICE|NPAS|HELI?MED|HEMS|MEDE?VAC|AIR ?MED|AMBUL|MEDIC|LIFE ?GUARD|LIFE ?FLIGHT|COAST ?GUARD|COASTGUARD|USCG|RESCUE|FIRE ?BIRD|SHERIFF|TROOPER|CUSTOMS|BORDER|CBP)/;
 async function fetchAircraft() {
   if (!state.origin) return;
   const nm = Math.min(Math.round(state.rangeKm / KM_PER_NM) + 2, 250);
@@ -340,6 +341,9 @@ async function fetchAircraft() {
     const onGround = a.alt_baro === "ground";
     const alt = onGround ? 0 : (typeof a.alt_baro === "number" ? a.alt_baro : null);
     const sq = a.squawk || null;
+    const csu = (a.flight || "").trim().toUpperCase();
+    const dbf = (typeof a.dbFlags === "number") ? a.dbFlags : 0;
+    const responder = RESP_RE.test(csu) || sq === "0020" || sq === "0023" || sq === "0032";
     list.push({
       icao24: a.hex || "?", callsign: (a.flight || "").trim() || "------",
       origin_country: [a.t, a.r].filter(Boolean).join(" · ") || "—",
@@ -348,8 +352,8 @@ async function fetchAircraft() {
       heading: (a.track != null ? a.track : a.true_heading),
       vrate: (a.baro_rate != null ? a.baro_rate : a.geom_rate),
       baro_alt: alt, squawk: sq, emergency: !!EMERG[sq],
-      mil: (((typeof a.dbFlags === "number") ? a.dbFlags : 0) & 1) === 1,
-      gov: (((typeof a.dbFlags === "number") ? a.dbFlags : 0) & 14) !== 0,
+      mil: (dbf & 1) === 1, responder: responder, gov: (dbf & 14) !== 0,
+      category: a.category || null,
       dist, brg: bearing(state.origin, pos), seen: now
     });
   }
@@ -360,6 +364,7 @@ async function fetchAircraft() {
 let demoFleet = null;
 function seedDemo() {
   const n = 14; demoFleet = [];
+  const CATS = ["A3","A7","A5","A1","B6","A4","A2","A3","A7","B1","A7","A2","A3","C1"];
   const carriers = ["BAW","DLH","AFR","UAL","DAL","RYR","EZY","KLM","SWA","QFA","AAL","ACA"];
   const types = ["A320","B738","A21N","B77W","E190","A359","B789","CRJ9"];
   for (let i = 0; i < n; i++) {
@@ -369,7 +374,7 @@ function seedDemo() {
       type: types[i % types.length], brg: Math.random()*360, distFrac: Math.random(),
       heading: Math.random()*360, speed: 220 + Math.random()*260,
       vrate: Math.round((Math.random()-0.5)*3000), baro_alt: 2000 + Math.floor(Math.random()*36000),
-      onGround: false, mil: i === 2, gov: i === 8, emergency: i === 5, squawk: i === 5 ? "7700" : null
+      onGround: false, mil: i === 2, gov: i === 8, responder: i === 10, emergency: i === 5, squawk: i === 5 ? "7700" : null, category: CATS[i]
     });
   }
 }
@@ -387,7 +392,7 @@ function stepDemo(dt) {
     list.push({
       icao24: a.icao24, callsign: a.callsign, origin_country: a.type + " · DEMO",
       heading: a.heading, velocity: a.speed, vrate: a.vrate, baro_alt: a.baro_alt,
-      onGround: false, squawk: a.squawk, emergency: a.emergency, mil: a.mil, gov: a.gov,
+      onGround: false, squawk: a.squawk, emergency: a.emergency, mil: a.mil, gov: a.gov, responder: a.responder, category: a.category,
       dist: frac * state.rangeKm, brg: a.brg, seen: now
     });
   }
@@ -427,8 +432,8 @@ function altColor(ft, onGround) {
   return [54,200,255];
 }
 function blipColor(a) {
-  if (a.emergency) return [255,93,93];
-  if (a.mil) return [255,157,60];
+  if (a.emergency) return [255,79,216];        // pink (flash handled in drawBlips)
+  if (a.mil || a.responder) return [255,43,43]; // bright red
   if (a.gov) return [199,125,255];
   return altColor(a.baro_alt, a.onGround);
 }
@@ -476,9 +481,9 @@ function renderDetail() {
   setText("d-origin", a.origin_country || "—"); setText("d-alt", fmtAlt(a.baro_alt));
   setText("d-spd", fmtSpd(a.velocity)); setText("d-hdg", fmtHdg(a.heading));
   setText("d-vert", fmtVrt(a.vrate));
-  const _tag = a.mil ? " · MIL" : (a.gov ? " · GOV" : "");
+  const _tag = a.mil ? " · MIL" : (a.responder ? " · RESPONDER" : (a.gov ? " · GOV" : ""));
   setText("d-sq", a.squawk ? (a.squawk + (EMERG[a.squawk] ? " ⚠ " + EMERG[a.squawk] : "") + _tag) : (_tag ? _tag.slice(3) : "—"));
-  $("d-sq").style.color = a.emergency ? "#ff5d5d" : (a.mil ? "#ff9d3c" : (a.gov ? "#c77dff" : "var(--green)"));
+  $("d-sq").style.color = a.emergency ? "#ff4fd8" : ((a.mil || a.responder) ? "#ff2b2b" : (a.gov ? "#c77dff" : "var(--green)"));
   setText("d-rb", (a.dist * MI_PER_KM).toFixed(1) + " mi / " + Math.round(a.brg) + "°");
   if (els.track) { const on = state.tracked === a.icao24; els.track.textContent = on ? "🎯 Tracking — tap to release" : "🎯 Track this aircraft"; els.track.classList.toggle("active", on); }
   if (state._enrichedFor !== a.icao24) { state._enrichedFor = a.icao24; enrichSelected(a); }
@@ -579,6 +584,34 @@ function drawSweep() {
   ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, -RR); ctx.stroke();
   ctx.restore(); ctx.shadowBlur = 0;
 }
+function glyphFor(a) {
+  const c = (a.category || "").toUpperCase();
+  if (c === "A7") return "heli";
+  if (c === "B6") return "drone";
+  if (c && c[0] === "C") return "ground";
+  if (c === "B1" || c === "B2" || c === "B4") return "glider";
+  if (c === "A3" || c === "A4" || c === "A5") return "jet";
+  if (c === "A1" || c === "A2") return "light";
+  return "plane";
+}
+function drawGlyph(g, kind) {
+  g.strokeStyle = g.fillStyle;
+  if (kind === "heli") {
+    g.beginPath(); g.arc(0, 0, 4.6, 0, Math.PI*2); g.fill();
+    g.lineWidth = 2.4;
+    g.beginPath(); g.moveTo(-11,-11); g.lineTo(11,11); g.moveTo(-11,11); g.lineTo(11,-11); g.stroke();
+    return;
+  }
+  if (kind === "drone") { g.beginPath(); g.moveTo(0,-8); g.lineTo(8,0); g.lineTo(0,8); g.lineTo(-8,0); g.closePath(); g.fill(); return; }
+  if (kind === "ground") { g.fillRect(-6,-6,12,12); return; }
+  if (kind === "glider") { g.beginPath(); g.moveTo(0,-16); g.lineTo(3,10); g.lineTo(0,7); g.lineTo(-3,10); g.closePath(); g.fill(); return; }
+  if (kind === "light") { g.beginPath(); g.moveTo(0,-11); g.lineTo(7,8); g.lineTo(0,4); g.lineTo(-7,8); g.closePath(); g.fill(); return; }
+  g.beginPath();
+  g.moveTo(0,-13); g.lineTo(2.5,-3); g.lineTo(12,2); g.lineTo(2.5,3);
+  g.lineTo(2,9); g.lineTo(6,13); g.lineTo(0,11); g.lineTo(-6,13);
+  g.lineTo(-2,9); g.lineTo(-2.5,3); g.lineTo(-12,2); g.lineTo(-2.5,-3);
+  g.closePath(); g.fill();
+}
 function drawBlips(now) {
   ctx.textAlign = "start";
   const _vis = visList();
@@ -589,7 +622,7 @@ function drawBlips(now) {
     if (a.icao24 === state.tracked) glow = 1;
     const sel = a.icao24 === state.selected;
     let col = blipColor(a);
-    if (a.emergency && (now % 600) < 300) col = [255,30,30];
+    if (a.emergency) col = (now % 560 < 280) ? [255,140,235] : [255,40,170];
     // trail history
     if (state.trailsOn) {
       const arr = trails[a.icao24] || (trails[a.icao24] = []);
@@ -601,11 +634,10 @@ function drawBlips(now) {
       ctx.strokeStyle = "rgba(255,225,150,0.9)"; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.arc(p.x, p.y, 18, 0, Math.PI*2); ctx.stroke();
     }
-    if (a.mil) {
-      ctx.strokeStyle = "rgba(255,157,60," + glow + ")"; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.arc(p.x, p.y, 13, 0, Math.PI*2); ctx.stroke();
-    }
-    if (a.gov && !a.mil) {
+    if (a.mil || a.responder) {
+      ctx.strokeStyle = "rgba(255,43,43," + glow + ")"; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(p.x, p.y, 14, 0, Math.PI*2); ctx.stroke();
+    } else if (a.gov) {
       ctx.strokeStyle = "rgba(199,125,255," + glow + ")"; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.arc(p.x, p.y, 13, 0, Math.PI*2); ctx.stroke();
     }
@@ -620,7 +652,7 @@ function drawBlips(now) {
     ctx.fillStyle = "rgba(" + col[0] + "," + col[1] + "," + col[2] + "," + glow + ")";
     ctx.shadowColor = "rgba(" + col[0] + "," + col[1] + "," + col[2] + ",0.85)";
     ctx.shadowBlur = 11 * glow;
-    ctx.beginPath(); ctx.moveTo(0, -12); ctx.lineTo(8, 9); ctx.lineTo(0, 4); ctx.lineTo(-8, 9); ctx.closePath(); ctx.fill();
+    drawGlyph(ctx, glyphFor(a));
     ctx.restore(); ctx.shadowBlur = 0;
     const lc = sel ? [255,225,150] : col;
     ctx.fillStyle = "rgba(" + lc[0] + "," + lc[1] + "," + lc[2] + "," + (0.45+glow*0.5) + ")";
