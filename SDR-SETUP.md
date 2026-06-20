@@ -78,6 +78,35 @@ you accept the mixed-content prompt. Options A and B avoid this entirely.
 
 ---
 
+## Supported SDRs — RTL-SDR, HackRF One, and more
+
+**Local SDR** mode reads whatever your decoder publishes, so **any SDR that can decode 1090 MHz ADS-B works** — RTL-SDR, **HackRF One**, Airspy, SDRplay, LimeSDR, etc. Use a decoder that supports your radio and outputs `aircraft.json`, then point R4D4RVU at it.
+
+### HackRF One
+
+1. Connect the HackRF One to a computer by USB.
+2. Run a HackRF-capable decoder that serves `aircraft.json` — for example:
+   - **[dump1090_sdrplus](https://github.com/itemir/dump1090_sdrplus)** (supports RTL-SDR, HackRF, Airspy, SDRplay), or
+   - **dump1090 / readsb built with HackRF support** (via SoapySDR + SoapyHackRF).
+
+   ```bash
+   # a dump1090 fork with HackRF support — serves the web UI + aircraft.json on :8080
+   ./dump1090 --device-type hackrf --net
+   ```
+3. In R4D4RVU choose **⚙ → Data source → Local SDR**, enter the feed URL
+   (e.g. `http://localhost:8080/data/aircraft.json`), set your location, and **Save & connect**.
+   Serve the app same-origin / over `http` (Options B or C) so the browser can read the feed.
+
+### PortaPack H4M (Mayhem firmware)
+
+A PortaPack (H4M and similar) running Mayhem has its own on-device **ADS-B RX** app that decodes
+aircraft on its screen — great standalone, but it does not publish a network `aircraft.json` feed.
+To use the radio with R4D4RVU, connect the HackRF to a computer and run a host decoder as above
+(the PortaPack can stay attached; the HackRF acts as a normal USB SDR to the computer).
+
+> The in-browser **RTL-SDR (USB)** mode is RTL-SDR-only (it speaks the RTL2832U USB protocol).
+> HackRF / PortaPack use the host-decoder route here.
+
 ## What works offline
 
 Everything on the scope: type-specific symbols, altitude colors, military/responder
