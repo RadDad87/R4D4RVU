@@ -15,7 +15,7 @@ R4D4RVU centers a vintage CRT-style radar scope on your current location and plo
 - **Live data** — pulls the OpenSky `/states/all` feed for a bounding box around you and converts each aircraft's lat/lon into a bearing + distance blip.
 - **Phosphor fade** — blips flare bright as the sweep passes their bearing, then dim like a real radar tube.
 - **Click any contact** — see callsign, ICAO24 address, country of origin, altitude, ground speed, heading, vertical speed, and range/bearing.
-- **Selectable range** — 25, 50, 100, 250, or 500 km.
+- **Selectable range** — 15, 30, 60, 150, or 300 miles.
 - **Three modes** — `LIVE` (your OpenSky credentials), anonymous (no credentials, rate-limited), and `DEMO` (a simulated fleet so it works offline).
 - **Zero install** — one HTML file you can open locally or host on GitHub Pages.
 
@@ -76,7 +76,7 @@ Leave the credentials blank to try **anonymous** access — it works but OpenSky
 
 | Control | What it does |
 | --- | --- |
-| **Scope range** | Sets the radar radius (25–500 km) and the OpenSky query box. |
+| **Scope range** | Sets the radar radius (15–300 miles) and the OpenSky query box. |
 | **Use my location** | Requests GPS/geolocation and re-centers the scope. |
 | **Pause / Resume** | Freezes the sweep and data polling. |
 | **Save & connect** | Stores credentials + manual coordinates and switches to LIVE. |
@@ -91,7 +91,7 @@ The **Status** panel shows the current mode, contact count, range, your position
 
 - **Distance** from you to each aircraft uses the haversine formula on the WGS-84 sphere.
 - **Bearing** uses the standard great-circle initial-bearing formula (0° = North, clockwise).
-- A blip is drawn at `distance / range` of the scope radius, rotated to its bearing — north is up.
+- Distances are computed on the WGS-84 sphere and shown in **miles**; a blip is drawn at `distance / range` of the scope radius, rotated to its bearing — north is up.
 - Aircraft glyphs are little triangles rotated to the reported track/heading.
 - Brightness is a function of how recently the sweep line passed each blip's bearing, mimicking a phosphor tube.
 

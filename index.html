@@ -66,7 +66,8 @@
   details summary { cursor: pointer; color: var(--green-dim); font-size: 0.72rem; letter-spacing: 1px; margin-bottom: 8px; }
   .hint { font-size: 0.66rem; color: var(--green-dim); line-height: 1.4; margin-top: 6px; }
   a { color: var(--green); }
-  #detail { display: none; } #detail.show { display: block; border-color: var(--green-dim); }
+  #detail { display: block; } #detail.show { border-color: var(--green-dim); }
+canvas#radar { cursor: crosshair; }
   footer { font-size: 0.66rem; color: var(--green-dim); letter-spacing: 1px; text-align: center; max-width: 900px; }
 </style>
 </head>
@@ -86,7 +87,7 @@
         <div class="readout">
           <span class="k">Mode</span><span class="v" id="st-mode"><span class="status-dot dot-demo"></span>—</span>
           <span class="k">Contacts</span><span class="v" id="st-count">0</span>
-          <span class="k">Range</span><span class="v" id="st-range">100 km</span>
+          <span class="k">Range</span><span class="v" id="st-range">60 mi</span>
           <span class="k">Your pos</span><span class="v" id="st-pos">—</span>
           <span class="k">Updated</span><span class="v" id="st-updated">—</span>
           <span class="k">Next ping</span><span class="v" id="st-next">—</span>
@@ -110,11 +111,11 @@
         <div class="field">
           <label for="range">Scope range</label>
           <select id="range">
-            <option value="25">25 km</option>
-            <option value="50">50 km</option>
-            <option value="100" selected>100 km</option>
-            <option value="250">250 km</option>
-            <option value="500">500 km</option>
+            <option value="15">15 mi</option>
+            <option value="30">30 mi</option>
+            <option value="60" selected>60 mi</option>
+            <option value="150">150 mi</option>
+            <option value="300">300 mi</option>
           </select>
         </div>
         <div class="row" style="margin-bottom:10px;">
@@ -147,6 +148,7 @@ const CFG = {
   statesUrl: "https://opensky-network.org/api/states/all",
   refreshMs: 12000, sweepPeriodMs: 4000
 };
+const KM_PER_MI = 1.60934, MI_PER_KM = 0.621371;
 const $ = id => document.getElementById(id);
 const els = {
   canvas: $("radar"), mode: $("st-mode"), count: $("st-count"), range: $("st-range"),
@@ -157,7 +159,7 @@ const els = {
 };
 const ctx = els.canvas.getContext("2d");
 const state = {
-  rangeKm: 100, origin: null, aircraft: [], selected: null,
+  rangeMi: 60, rangeKm: 60 * 1.60934, origin: null, aircraft: [], selected: null,
   mode: "demo", paused: false, lastFetch: 0, nextFetch: 0,
   token: null, tokenExp: 0, creds: { cid: "", csec: "" }, _screen: []
 };
@@ -166,13 +168,13 @@ function loadPrefs() {
     const p = JSON.parse(localStorage.getItem("r4d4rvu") || "{}");
     if (p.cid) { state.creds.cid = p.cid; els.cid.value = p.cid; }
     if (p.csec) { state.creds.csec = p.csec; els.csec.value = p.csec; }
-    if (p.rangeKm) { state.rangeKm = p.rangeKm; els.rangeSel.value = String(p.rangeKm); }
+    if (p.rangeMi) { state.rangeMi = p.rangeMi; state.rangeKm = p.rangeMi * KM_PER_MI; els.rangeSel.value = String(p.rangeMi); }
     if (p.origin) { state.origin = p.origin; els.lat.value = p.origin.lat; els.lon.value = p.origin.lon; }
   } catch (e) {}
 }
 function savePrefs() {
   localStorage.setItem("r4d4rvu", JSON.stringify({
-    cid: state.creds.cid, csec: state.creds.csec, rangeKm: state.rangeKm, origin: state.origin
+    cid: state.creds.cid, csec: state.creds.csec, rangeMi: state.rangeMi, origin: state.origin
   }));
 }
 const R_EARTH = 6371;
@@ -288,19 +290,19 @@ const fmtVrt = ms => ms == null ? "—" : (ms >= 0 ? "+" : "-") + Math.abs(Math.
 const fmtHdg = d => d == null ? "—" : Math.round(d) + "°";
 function updateReadout() {
   els.count.textContent = state.aircraft.length;
-  els.range.textContent = state.rangeKm + " km";
+  els.range.textContent = state.rangeMi + " mi";
   els.pos.textContent = state.origin ? state.origin.lat.toFixed(3) + ", " + state.origin.lon.toFixed(3) : "—";
   els.updated.textContent = state.lastFetch ? new Date(state.lastFetch).toLocaleTimeString() : "—";
   if (state.selected) renderDetail();
 }
 function renderDetail() {
   const a = state.aircraft.find(x => x.icao24 === state.selected);
-  if (!a) { els.detail.classList.remove("show"); return; }
+  if (!a) { els.detail.classList.remove("show"); $("d-call").textContent = "click a blip \u2192"; return; }
   els.detail.classList.add("show");
   $("d-call").textContent = a.callsign; $("d-icao").textContent = a.icao24;
   $("d-origin").textContent = a.origin_country || "—"; $("d-alt").textContent = fmtAlt(a.baro_alt);
   $("d-spd").textContent = fmtSpd(a.velocity); $("d-hdg").textContent = fmtHdg(a.heading);
-  $("d-vert").textContent = fmtVrt(a.vrate); $("d-rb").textContent = a.dist.toFixed(1) + " km / " + Math.round(a.brg) + "°";
+  $("d-vert").textContent = fmtVrt(a.vrate); $("d-rb").textContent = (a.dist * MI_PER_KM).toFixed(1) + " mi / " + Math.round(a.brg) + "°";
 }
 const SIZE = 1040, C = SIZE / 2, RR = SIZE / 2 - 40;
 let sweepAngle = 0, lastFrame = performance.now();
@@ -315,7 +317,7 @@ function drawGrid() {
     ctx.strokeStyle = "rgba(54,255,139,0.22)";
     ctx.beginPath(); ctx.arc(C, C, (RR * i) / 4, 0, Math.PI * 2); ctx.stroke();
     ctx.fillStyle = "rgba(54,255,139,0.4)"; ctx.font = "20px monospace";
-    ctx.fillText(Math.round((state.rangeKm * i) / 4) + "km", C + 6, C - (RR * i) / 4 + 22);
+    ctx.fillText(Math.round((state.rangeMi * i) / 4) + "mi", C + 6, C - (RR * i) / 4 + 22);
   }
   for (let d = 0; d < 360; d += 30) {
     const a = toRad(d);
@@ -379,11 +381,19 @@ function frame(t) {
   } else { els.next.textContent = state.mode === "demo" ? "simulated" : "—"; }
   requestAnimationFrame(frame);
 }
+els.canvas.addEventListener("mousemove", e => {
+  const r = els.canvas.getBoundingClientRect();
+  const x = (e.clientX - r.left) * (SIZE / r.width);
+  const y = (e.clientY - r.top) * (SIZE / r.height);
+  let over = false;
+  for (const s2 of (state._screen || [])) { if (Math.hypot(s2.x - x, s2.y - y) < 55) { over = true; break; } }
+  els.canvas.style.cursor = over ? "pointer" : "crosshair";
+});
 els.canvas.addEventListener("click", e => {
   const r = els.canvas.getBoundingClientRect();
   const x = (e.clientX - r.left) * (SIZE / r.width);
   const y = (e.clientY - r.top) * (SIZE / r.height);
-  let best = null, bd = 34;
+  let best = null, bd = 55;
   for (const s of (state._screen || [])) {
     const d = Math.hypot(s.x - x, s.y - y);
     if (d < bd) { bd = d; best = s.icao24; }
@@ -391,7 +401,7 @@ els.canvas.addEventListener("click", e => {
   state.selected = best; renderDetail();
 });
 els.rangeSel.addEventListener("change", () => {
-  state.rangeKm = parseInt(els.rangeSel.value, 10);
+  state.rangeMi = parseInt(els.rangeSel.value, 10); state.rangeKm = state.rangeMi * KM_PER_MI;
   savePrefs(); updateReadout(); tick(true);
 });
 els.locate.addEventListener("click", requestLocation);
