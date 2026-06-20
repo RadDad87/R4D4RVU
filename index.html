@@ -4,41 +4,32 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
 <title>R4D4RVU — Live Air Traffic Radar</title>
-<meta name="description" content="A classic round radar that sweeps the skies above your location using live OpenSky Network air-traffic data." />
+<meta name="description" content="A classic round radar that sweeps the skies above your location using live community ADS-B air-traffic data." />
 <style>
   :root {
-    --bg: #03120a;
-    --panel: #061a0f;
-    --green: #36ff8b;
-    --green-dim: #1f9c54;
-    --green-faint: rgba(54, 255, 139, 0.18);
-    --amber: #ffd166;
-    --red: #ff5d5d;
-    --text: #b8ffd4;
-    --mono: "SF Mono", "JetBrains Mono", "Fira Code", Consolas, "Courier New", monospace;
+    --bg: #03120a; --panel: #061a0f; --green: #36ff8b; --green-dim: #1f9c54;
+    --green-faint: rgba(54, 255, 139, 0.18); --amber: #ffd166; --red: #ff5d5d;
+    --text: #b8ffd4; --mono: "SF Mono", "JetBrains Mono", "Fira Code", Consolas, "Courier New", monospace;
   }
   * { box-sizing: border-box; }
   html, body {
     margin: 0; padding: 0;
     background: radial-gradient(circle at 50% 0%, #07241400, #010a06 70%), var(--bg);
-    color: var(--text); font-family: var(--mono); min-height: 100vh;
-    -webkit-font-smoothing: antialiased;
+    color: var(--text); font-family: var(--mono); min-height: 100vh; -webkit-font-smoothing: antialiased;
   }
   body { display: flex; flex-direction: column; align-items: center; padding: 16px 12px 40px; gap: 16px; }
   header {
-    width: 100%; max-width: 900px; display: flex; align-items: baseline;
-    justify-content: space-between; flex-wrap: wrap; gap: 6px;
-    border-bottom: 1px solid var(--green-faint); padding-bottom: 10px;
+    width: 100%; max-width: 900px; display: flex; align-items: baseline; justify-content: space-between;
+    flex-wrap: wrap; gap: 6px; border-bottom: 1px solid var(--green-faint); padding-bottom: 10px;
   }
   header h1 { font-size: 1.4rem; letter-spacing: 4px; margin: 0; color: var(--green); text-shadow: 0 0 8px rgba(54,255,139,0.5); }
   header .tag { font-size: 0.7rem; color: var(--green-dim); letter-spacing: 2px; }
-  .layout { width: 100%; max-width: 900px; display: flex; gap: 20px; flex-wrap: wrap; justify-content: center; }
-  .scope-wrap { position: relative; width: min(92vw, 520px); aspect-ratio: 1 / 1; flex: 0 0 auto; }
+  .layout { width: 100%; max-width: 900px; display: flex; gap: 20px; flex-wrap: wrap; justify-content: center; align-items: flex-start; }
+  .scope-wrap { position: relative; width: min(92vw, 520px); aspect-ratio: 1 / 1; flex: 0 0 auto; align-self: flex-start; }
   canvas#radar {
-    width: 100%; height: 100%; display: block; border-radius: 50%;
+    width: 100%; height: 100%; display: block; border-radius: 50%; cursor: crosshair;
     background: radial-gradient(circle at 50% 50%, #053a1d 0%, #021c0d 60%, #001206 100%);
-    box-shadow: 0 0 0 6px #04150b, 0 0 0 8px rgba(54,255,139,0.25),
-      0 0 40px rgba(54,255,139,0.18) inset, 0 0 50px rgba(0,0,0,0.8);
+    box-shadow: 0 0 0 6px #04150b, 0 0 0 8px rgba(54,255,139,0.25), 0 0 40px rgba(54,255,139,0.18) inset, 0 0 50px rgba(0,0,0,0.8);
   }
   .scope-overlay {
     position: absolute; inset: 0; pointer-events: none; border-radius: 50%;
@@ -67,17 +58,16 @@
   details summary::-webkit-details-marker { display: none; }
   details summary:hover { background: #086c39; box-shadow: 0 0 12px rgba(54,255,139,0.35); }
   details[open] summary { margin-bottom: 12px; background: #021109; }
-  .hint { font-size: 0.66rem; color: var(--green-dim); line-height: 1.4; margin-top: 6px; }
+  .hint { font-size: 0.66rem; color: var(--green-dim); line-height: 1.4; margin: 4px 0 10px; }
   a { color: var(--green); }
   #detail { display: block; } #detail.show { border-color: var(--green-dim); }
-canvas#radar { cursor: crosshair; }
   footer { font-size: 0.66rem; color: var(--green-dim); letter-spacing: 1px; text-align: center; max-width: 900px; }
 </style>
 </head>
 <body>
   <header>
     <h1>R4D4RVU</h1>
-    <span class="tag">LIVE AIR-TRAFFIC SCOPE · OPENSKY NETWORK</span>
+    <span class="tag">LIVE AIR-TRAFFIC SCOPE · ADS-B</span>
   </header>
   <div class="layout">
     <div class="scope-wrap">
@@ -99,9 +89,9 @@ canvas#radar { cursor: crosshair; }
       <div class="card" id="detail">
         <h2>Contact</h2>
         <div class="readout">
-          <span class="k">Callsign</span><span class="v" id="d-call">—</span>
+          <span class="k">Callsign</span><span class="v" id="d-call">click a blip &rarr;</span>
           <span class="k">ICAO24</span><span class="v" id="d-icao">—</span>
-          <span class="k">Origin</span><span class="v" id="d-origin">—</span>
+          <span class="k">Type/Reg</span><span class="v" id="d-origin">—</span>
           <span class="k">Altitude</span><span class="v" id="d-alt">—</span>
           <span class="k">Speed</span><span class="v" id="d-spd">—</span>
           <span class="k">Heading</span><span class="v" id="d-hdg">—</span>
@@ -126,10 +116,8 @@ canvas#radar { cursor: crosshair; }
           <button id="pause" class="ghost">Pause</button>
         </div>
         <details>
-          <summary>⚙ Add OpenSky API keys (import JSON)</summary>
-          <div class="field"><label for="cid">OpenSky client_id</label><input id="cid" type="text" autocomplete="off" placeholder="your-api-client" /></div>
-          <div class="field"><label for="csec">OpenSky client_secret</label><input id="csec" type="password" autocomplete="off" placeholder="********" /></div>
-          <div class="field" style="margin-bottom:6px;"><button id="importBtn" class="ghost" type="button" style="width:100%;">&uarr; Import OpenSky JSON file</button><input id="importFile" type="file" accept=".json,application/json" style="display:none" /></div>
+          <summary>⚙ Set location manually / options</summary>
+          <p class="hint">Live data comes from <a href="https://airplanes.live" target="_blank" rel="noopener">airplanes.live</a> — a free community ADS-B network. No API key needed. Allow location access, or type coordinates below.</p>
           <div class="row">
             <div class="field"><label for="lat">Latitude</label><input id="lat" type="number" step="0.0001" placeholder="auto" /></div>
             <div class="field"><label for="lon">Longitude</label><input id="lon" type="number" step="0.0001" placeholder="auto" /></div>
@@ -138,47 +126,39 @@ canvas#radar { cursor: crosshair; }
             <button id="save">Save &amp; connect</button>
             <button id="demo" class="ghost">Demo mode</button>
           </div>
-          <p class="hint">Credentials are stored only in this browser (localStorage) and sent directly to OpenSky. Get them at <a href="https://opensky-network.org/my-opensky/account" target="_blank" rel="noopener">your OpenSky account</a> &rarr; "API client". Leave blank to try anonymous access.</p>
         </details>
       </div>
     </div>
   </div>
-  <footer>Data &copy; <a href="https://opensky-network.org" target="_blank" rel="noopener">The OpenSky Network</a>. Positions are approximate and for hobby/educational use only — not for navigation.</footer>
+  <footer>Live data &copy; <a href="https://airplanes.live" target="_blank" rel="noopener">airplanes.live</a> contributors. Positions are approximate and for hobby/educational use only — not for navigation.</footer>
 <script>
 "use strict";
 const CFG = {
-  tokenUrl: "https://auth.opensky-network.org/auth/realms/opensky-network/protocol/openid-connect/token",
-  statesUrl: "https://opensky-network.org/api/states/all",
+  dataUrl: "https://api.airplanes.live/v2/point/",
   refreshMs: 12000, sweepPeriodMs: 4000
 };
-const KM_PER_MI = 1.60934, MI_PER_KM = 0.621371;
+const KM_PER_MI = 1.60934, MI_PER_KM = 0.621371, KM_PER_NM = 1.852;
 const $ = id => document.getElementById(id);
 const els = {
   canvas: $("radar"), mode: $("st-mode"), count: $("st-count"), range: $("st-range"),
   pos: $("st-pos"), updated: $("st-updated"), next: $("st-next"), rangeSel: $("range"),
   locate: $("locate"), pause: $("pause"), save: $("save"), demo: $("demo"),
-  cid: $("cid"), csec: $("csec"), lat: $("lat"), lon: $("lon"), detail: $("detail"),
-  importBtn: $("importBtn"), importFile: $("importFile")
+  lat: $("lat"), lon: $("lon"), detail: $("detail")
 };
 const ctx = els.canvas.getContext("2d");
 const state = {
-  rangeMi: 60, rangeKm: 60 * 1.60934, origin: null, aircraft: [], selected: null,
-  mode: "demo", paused: false, lastFetch: 0, nextFetch: 0,
-  token: null, tokenExp: 0, creds: { cid: "", csec: "" }, _screen: []
+  rangeMi: 60, rangeKm: 60 * KM_PER_MI, origin: null, aircraft: [], selected: null,
+  mode: "demo", paused: false, lastFetch: 0, nextFetch: 0, _screen: []
 };
 function loadPrefs() {
   try {
     const p = JSON.parse(localStorage.getItem("r4d4rvu") || "{}");
-    if (p.cid) { state.creds.cid = p.cid; els.cid.value = p.cid; }
-    if (p.csec) { state.creds.csec = p.csec; els.csec.value = p.csec; }
     if (p.rangeMi) { state.rangeMi = p.rangeMi; state.rangeKm = p.rangeMi * KM_PER_MI; els.rangeSel.value = String(p.rangeMi); }
     if (p.origin) { state.origin = p.origin; els.lat.value = p.origin.lat; els.lon.value = p.origin.lon; }
   } catch (e) {}
 }
 function savePrefs() {
-  localStorage.setItem("r4d4rvu", JSON.stringify({
-    cid: state.creds.cid, csec: state.creds.csec, rangeMi: state.rangeMi, origin: state.origin
-  }));
+  localStorage.setItem("r4d4rvu", JSON.stringify({ rangeMi: state.rangeMi, origin: state.origin }));
 }
 const R_EARTH = 6371;
 const toRad = d => d * Math.PI / 180;
@@ -195,50 +175,34 @@ function bearing(a, b) {
   const x = Math.cos(la1)*Math.sin(la2) - Math.sin(la1)*Math.cos(la2)*Math.cos(dLon);
   return (toDeg(Math.atan2(y, x)) + 360) % 360;
 }
-function bbox(origin, rangeKm) {
-  const dLat = (rangeKm / 111) * 1.1;
-  const dLon = (rangeKm / (111 * Math.cos(toRad(origin.lat)))) * 1.1;
-  return { lamin: origin.lat - dLat, lamax: origin.lat + dLat, lomin: origin.lon - dLon, lomax: origin.lon + dLon };
-}
-async function getToken() {
-  if (!state.creds.cid || !state.creds.csec) return null;
-  if (state.token && Date.now() < state.tokenExp - 30000) return state.token;
-  const body = new URLSearchParams({ grant_type: "client_credentials", client_id: state.creds.cid, client_secret: state.creds.csec });
-  const res = await fetch(CFG.tokenUrl, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body });
-  if (!res.ok) throw new Error("Auth failed (" + res.status + ")");
-  const j = await res.json();
-  state.token = j.access_token;
-  state.tokenExp = Date.now() + (j.expires_in || 1800) * 1000;
-  return state.token;
-}
 async function fetchAircraft() {
   if (!state.origin) return;
-  const b = bbox(state.origin, state.rangeKm);
-  const url = CFG.statesUrl + "?lamin=" + b.lamin + "&lomin=" + b.lomin + "&lamax=" + b.lamax + "&lomax=" + b.lomax;
-  const headers = {};
-  try { const tok = await getToken(); if (tok) headers["Authorization"] = "Bearer " + tok; }
-  catch (e) { setMode("error", e.message); }
+  const nm = Math.min(Math.round(state.rangeKm / KM_PER_NM) + 2, 250);
+  const url = CFG.dataUrl + state.origin.lat.toFixed(4) + "/" + state.origin.lon.toFixed(4) + "/" + nm;
   let res;
-  try { res = await fetch(url, { headers }); }
-  catch (e) { setMode("error", "Network/CORS error"); return; }
-  if (res.status === 401) { state.token = null; setMode("error", "Token expired/invalid"); return; }
-  if (res.status === 429) { setMode("error", "Rate limited"); return; }
-  if (!res.ok) { setMode("error", "OpenSky " + res.status); return; }
-  const data = await res.json();
-  const rows = data.states || [];
+  try { res = await fetch(url, { signal: AbortSignal.timeout(10000) }); }
+  catch (e) { setMode("error", "Network error"); return; }
+  if (!res.ok) { setMode("error", "Data " + res.status); return; }
+  let data; try { data = await res.json(); } catch (e) { setMode("error", "Bad data"); return; }
+  const rows = data.ac || [];
   const now = Date.now();
   const list = [];
-  for (const s of rows) {
-    const lon = s[5], lat = s[6];
-    if (lat == null || lon == null) continue;
-    const pos = { lat, lon };
+  for (const a of rows) {
+    if (a.lat == null || a.lon == null) continue;
+    const pos = { lat: a.lat, lon: a.lon };
     const dist = haversine(state.origin, pos);
     if (dist > state.rangeKm) continue;
+    const onGround = a.alt_baro === "ground";
+    const alt = onGround ? 0 : (typeof a.alt_baro === "number" ? a.alt_baro : null);
     list.push({
-      icao24: s[0], callsign: (s[1] || "").trim() || "------",
-      origin_country: s[2], lon, lat, onGround: s[8],
-      velocity: s[9], heading: s[10], vrate: s[11],
-      baro_alt: s[7], geo_alt: s[13],
+      icao24: a.hex || "?",
+      callsign: (a.flight || "").trim() || "------",
+      origin_country: [a.t, a.r].filter(Boolean).join(" · ") || "—",
+      lat: a.lat, lon: a.lon, onGround,
+      velocity: (a.gs != null ? a.gs : null),
+      heading: (a.track != null ? a.track : a.true_heading),
+      vrate: (a.baro_rate != null ? a.baro_rate : a.geom_rate),
+      baro_alt: alt,
       dist, brg: bearing(state.origin, pos), seen: now
     });
   }
@@ -250,14 +214,16 @@ let demoFleet = null;
 function seedDemo() {
   const n = 14; demoFleet = [];
   const carriers = ["BAW","DLH","AFR","UAL","DAL","RYR","EZY","KLM","SWA","QFA","AAL","ACA"];
+  const types = ["A320","B738","A21N","B77W","E190","A359","B789","CRJ9"];
   for (let i = 0; i < n; i++) {
     demoFleet.push({
       icao24: Math.random().toString(16).slice(2, 8),
       callsign: carriers[i % carriers.length] + (100 + Math.floor(Math.random()*899)),
-      origin_country: "Demo", brg: Math.random()*360, distFrac: Math.random(),
-      heading: Math.random()*360, speed: 180 + Math.random()*60,
-      velocity: 180 + Math.random()*90, vrate: (Math.random()-0.5)*8,
-      baro_alt: 1500 + Math.random()*11000, onGround: false
+      type: types[i % types.length],
+      brg: Math.random()*360, distFrac: Math.random(),
+      heading: Math.random()*360, speed: 220 + Math.random()*260,
+      vrate: Math.round((Math.random()-0.5)*3000),
+      baro_alt: 2000 + Math.floor(Math.random()*36000), onGround: false
     });
   }
 }
@@ -265,7 +231,7 @@ function stepDemo(dt) {
   if (!demoFleet) seedDemo();
   const now = Date.now(); const list = [];
   for (const a of demoFleet) {
-    const spd = (a.speed / 3600) * (dt / 1000) / Math.max(state.rangeKm, 1) * 60;
+    const spd = (a.speed / 3600) * (dt / 1000) / Math.max(state.rangeMi * MI_PER_KM * 0 + state.rangeKm, 1) * 60;
     const hr = toRad(a.heading);
     let x = Math.sin(toRad(a.brg)) * a.distFrac + Math.sin(hr) * spd;
     let y = -Math.cos(toRad(a.brg)) * a.distFrac - Math.cos(hr) * spd;
@@ -273,8 +239,8 @@ function stepDemo(dt) {
     if (frac > 1.05) { a.brg = (a.brg + 180) % 360; a.distFrac = 1.0; frac = 1.0; }
     else { a.brg = (toDeg(Math.atan2(x, -y)) + 360) % 360; a.distFrac = frac; }
     list.push({
-      icao24: a.icao24, callsign: a.callsign, origin_country: a.origin_country,
-      heading: a.heading, velocity: a.velocity, vrate: a.vrate,
+      icao24: a.icao24, callsign: a.callsign, origin_country: a.type + " · DEMO",
+      heading: a.heading, velocity: a.speed, vrate: a.vrate,
       baro_alt: a.baro_alt, onGround: false, dist: frac * state.rangeKm, brg: a.brg, seen: now
     });
   }
@@ -287,9 +253,9 @@ function setMode(m, msg) {
   const label = m === "live" ? "LIVE" : m === "demo" ? "DEMO" : ("ERR" + (msg ? " · " + msg : ""));
   els.mode.innerHTML = '<span class="status-dot ' + dot + '"></span>' + label;
 }
-const fmtAlt = m => m == null ? "—" : Math.round(m * 3.28084).toLocaleString() + " ft";
-const fmtSpd = ms => ms == null ? "—" : Math.round(ms * 1.94384) + " kt";
-const fmtVrt = ms => ms == null ? "—" : (ms >= 0 ? "+" : "-") + Math.abs(Math.round(ms * 196.85)) + " fpm";
+const fmtAlt = ft => ft == null ? "—" : (ft === 0 ? "ground" : Math.round(ft).toLocaleString() + " ft");
+const fmtSpd = kt => kt == null ? "—" : Math.round(kt) + " kt";
+const fmtVrt = fpm => fpm == null ? "—" : (fpm >= 0 ? "+" : "-") + Math.abs(Math.round(fpm)) + " fpm";
 const fmtHdg = d => d == null ? "—" : Math.round(d) + "°";
 function updateReadout() {
   els.count.textContent = state.aircraft.length;
@@ -300,7 +266,7 @@ function updateReadout() {
 }
 function renderDetail() {
   const a = state.aircraft.find(x => x.icao24 === state.selected);
-  if (!a) { els.detail.classList.remove("show"); $("d-call").textContent = "click a blip \u2192"; return; }
+  if (!a) { els.detail.classList.remove("show"); $("d-call").textContent = "click a blip →"; return; }
   els.detail.classList.add("show");
   $("d-call").textContent = a.callsign; $("d-icao").textContent = a.icao24;
   $("d-origin").textContent = a.origin_country || "—"; $("d-alt").textContent = fmtAlt(a.baro_alt);
@@ -412,34 +378,13 @@ els.pause.addEventListener("click", () => {
   state.paused = !state.paused; els.pause.textContent = state.paused ? "Resume" : "Pause";
 });
 els.save.addEventListener("click", () => {
-  state.creds.cid = els.cid.value.trim(); state.creds.csec = els.csec.value.trim();
   if (els.lat.value && els.lon.value) state.origin = { lat: parseFloat(els.lat.value), lon: parseFloat(els.lon.value) };
-  state.token = null; savePrefs();
+  savePrefs();
   if (state.origin) { setMode("live"); tick(true); } else { requestLocation(); }
 });
 els.demo.addEventListener("click", () => {
   if (!state.origin) state.origin = { lat: 51.4700, lon: -0.4543 };
   setMode("demo"); seedDemo(); updateReadout();
-});
-els.importBtn.addEventListener("click", () => els.importFile.click());
-els.importFile.addEventListener("change", e => {
-  const f = e.target.files && e.target.files[0];
-  if (!f) return;
-  const reader = new FileReader();
-  reader.onload = () => {
-    let j;
-    try { j = JSON.parse(reader.result); }
-    catch (err) { alert("That file isn't valid JSON."); return; }
-    const cid = j.clientId || j.client_id || j.clientID || j.id || "";
-    const csec = j.clientSecret || j.client_secret || j.secret || "";
-    if (!cid || !csec) { alert("Couldn't find clientId / clientSecret in that file."); return; }
-    els.cid.value = cid; els.csec.value = csec;
-    state.creds.cid = cid; state.creds.csec = csec;
-    state.token = null; savePrefs();
-    if (state.origin) { setMode("live"); tick(true); } else { requestLocation(); }
-  };
-  reader.readAsText(f);
-  e.target.value = "";
 });
 function requestLocation() {
   if (!navigator.geolocation) { useFallbackLocation(); return; }
@@ -462,13 +407,11 @@ async function tick(force) {
   if (!state.origin) return;
   if (!force && Date.now() < state.nextFetch) return;
   state.nextFetch = Date.now() + CFG.refreshMs;
-  try { await fetchAircraft(); } catch (e) { setMode("error", e.message); }
+  try { await fetchAircraft(); } catch (e) { setMode("error", "fetch"); }
 }
 function boot() {
   loadPrefs(); updateReadout(); setMode("demo"); seedDemo();
-  if (state.origin || (state.creds.cid && state.creds.csec)) {
-    if (!state.origin) requestLocation(); else { setMode("live"); tick(true); }
-  }
+  if (state.origin) { setMode("live"); tick(true); } else { requestLocation(); }
   setInterval(() => tick(false), 1000);
   requestAnimationFrame(frame);
 }
