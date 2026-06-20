@@ -520,25 +520,27 @@ function ensureAudio() {
   if (audioCtx) return;
   try {
     audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    sonarDelay = audioCtx.createDelay(1.5); sonarDelay.delayTime.value = 0.26;   // echo spacing
-    const fb = audioCtx.createGain(); fb.gain.value = 0.36;                       // fading repeats
-    sonarWet = audioCtx.createGain(); sonarWet.gain.value = 0.55;                 // echo level
+    sonarDelay = audioCtx.createDelay(1.5); sonarDelay.delayTime.value = 0.34;   // single soft echo
+    const fb = audioCtx.createGain(); fb.gain.value = 0.12;                       // barely repeats
+    sonarWet = audioCtx.createGain(); sonarWet.gain.value = 0.28;                 // quiet echo
     sonarDelay.connect(fb); fb.connect(sonarDelay);
     sonarDelay.connect(sonarWet); sonarWet.connect(audioCtx.destination);
   } catch (e) {}
 }
 function ping(freq, dur, vol) {
   if (!state.soundOn || !audioCtx) return;
-  const t = audioCtx.currentTime, len = dur || 0.32;
+  const t = audioCtx.currentTime, len = dur || 1.3;
   const o = audioCtx.createOscillator(), g = audioCtx.createGain();
-  o.type = "sine"; o.frequency.value = freq;                  // steady high tone — the "blip"
+  o.type = "sine";
+  o.frequency.setValueAtTime(freq * 0.94, t);
+  o.frequency.exponentialRampToValueAtTime(freq, t + 0.045);  // subtle onset rise
   g.gain.setValueAtTime(0.0001, t);
-  g.gain.exponentialRampToValueAtTime(vol, t + 0.006);        // sharp attack
-  g.gain.exponentialRampToValueAtTime(0.0001, t + len);       // clean decay
+  g.gain.exponentialRampToValueAtTime(vol, t + 0.008);        // sharp attack
+  g.gain.exponentialRampToValueAtTime(0.0001, t + len);       // long smooth singing ring
   o.connect(g);
-  g.connect(audioCtx.destination);                            // dry blip
-  if (sonarDelay) g.connect(sonarDelay);                      // submarine echo trail
-  o.start(t); o.stop(t + len + 0.02);
+  g.connect(audioCtx.destination);                            // dry ping
+  if (sonarDelay) g.connect(sonarDelay);                      // one faint echo
+  o.start(t); o.stop(t + len + 0.05);
 }
 function frame(t) {
   const dt = t - lastFrame; lastFrame = t; const now = Date.now();
@@ -548,11 +550,11 @@ function frame(t) {
     if (state.mode === "demo") stepDemo(dt);
     if (state.soundOn && state.aircraft.length) {
       const p = performance.now();
-      if (p - lastPing > 650) {
+      if (p - lastPing > 950) {
         for (const a of state.aircraft) {
           if (crossed(sweepPrev, sweepAngle, a.brg)) {
-            const f = a.emergency ? 1600 : (a.icao24 === state.selected ? 1320 : 1050 + Math.min(280, (a.baro_alt||0)/160));
-            ping(f, 0.32, a.emergency ? 0.10 : 0.06); lastPing = p; break;
+            const f = a.emergency ? 1100 : (a.icao24 === state.selected ? 940 : 720 + Math.min(220, (a.baro_alt||0)/200));
+            ping(f, 1.3, a.emergency ? 0.10 : 0.06); lastPing = p; break;
           }
         }
       }
@@ -592,7 +594,7 @@ els.locate.addEventListener("click", requestLocation);
 els.pause.addEventListener("click", () => { state.paused = !state.paused; els.pause.textContent = state.paused ? "Resume" : "Pause"; });
 els.sound.addEventListener("click", () => {
   state.soundOn = !state.soundOn;
-  if (state.soundOn) { ensureAudio(); if (audioCtx && audioCtx.state === "suspended") audioCtx.resume(); ping(1100, 0.32, 0.06); }
+  if (state.soundOn) { ensureAudio(); if (audioCtx && audioCtx.state === "suspended") audioCtx.resume(); ping(800, 1.3, 0.06); }
   els.sound.textContent = (state.soundOn ? "🔊" : "🔇") + " Ping: " + (state.soundOn ? "on" : "off");
 });
 els.trailsBtn.addEventListener("click", () => {
