@@ -53,6 +53,7 @@
   button { cursor: pointer; background: #05311b; border-color: var(--green-dim); letter-spacing: 1px; transition: background 0.15s, box-shadow 0.15s; }
   button:hover { background: #086c39; box-shadow: 0 0 12px rgba(54,255,139,0.35); }
   button.ghost { background: #021109; }
+  button.active { background: #0a7a44; color: #eaffe9; border-color: var(--green); box-shadow: 0 0 10px rgba(54,255,139,0.4); }
   .field { margin-bottom: 10px; }
   details summary { cursor: pointer; color: var(--green); font-size: 0.8rem; letter-spacing: 1px; margin-bottom: 8px; padding: 9px 10px; border: 1px solid var(--green-dim); border-radius: 6px; background: #05311b; text-align: center; list-style: none; }
   details summary::-webkit-details-marker { display: none; }
@@ -105,6 +106,7 @@
           <span class="k">Squawk</span><span class="v" id="d-sq">—</span>
           <span class="k">Range/Brg</span><span class="v" id="d-rb">—</span>
         </div>
+        <button id="track" class="ghost" style="margin-top:10px;display:none;">🎯 Track this aircraft</button>
         <img id="d-photo" alt="aircraft photo" />
         <div class="hint" id="d-credit" style="display:none;"></div>
       </div>
@@ -124,6 +126,7 @@
           <span><i style="color:#36c8ff;background:#36c8ff"></i>30k+</span>
           <span><i style="color:#ff5d5d;background:#ff5d5d"></i>emergency</span>
           <span><i style="color:#ff9d3c;background:#ff9d3c"></i>military</span>
+          <span><i style="color:#c77dff;background:#c77dff"></i>gov/special</span>
         </div>
       </div>
       <div class="card">
@@ -145,6 +148,9 @@
         <div class="row" style="margin-bottom:10px;">
           <button id="sound" class="ghost">🔇 Ping: off</button>
           <button id="trails" class="ghost">✦ Trails: on</button>
+        </div>
+        <div class="row" style="margin-bottom:10px;">
+          <button id="ground" class="ghost active">🛬 Ground: hidden</button>
         </div>
         <details>
           <summary>⚙ Set location manually / options</summary>
@@ -172,13 +178,13 @@ const els = {
   canvas: $("radar"), mode: $("st-mode"), count: $("st-count"), range: $("st-range"),
   pos: $("st-pos"), updated: $("st-updated"), next: $("st-next"), rangeSel: $("range"),
   locate: $("locate"), pause: $("pause"), save: $("save"), demo: $("demo"),
-  sound: $("sound"), trailsBtn: $("trails"), lat: $("lat"), lon: $("lon"), detail: $("detail")
+  sound: $("sound"), trailsBtn: $("trails"), ground: $("ground"), track: $("track"), lat: $("lat"), lon: $("lon"), detail: $("detail")
 };
 const ctx = els.canvas.getContext("2d");
 const state = {
   rangeMi: 60, rangeKm: 60 * KM_PER_MI, origin: null, aircraft: [], selected: null,
   mode: "demo", paused: false, lastFetch: 0, nextFetch: 0, _screen: [],
-  soundOn: false, trailsOn: true, _enrichedFor: null
+  soundOn: false, trailsOn: true, _enrichedFor: null, hideGround: true, tracked: null
 };
 const trails = {};            // icao24 -> [{x,y,t,col}]
 const enrichCache = {};       // icao24 -> {airline,route,photo,credit}
@@ -190,10 +196,11 @@ function loadPrefs() {
     if (p.rangeMi) { state.rangeMi = p.rangeMi; state.rangeKm = p.rangeMi * KM_PER_MI; els.rangeSel.value = String(p.rangeMi); }
     if (p.origin) { state.origin = p.origin; els.lat.value = p.origin.lat; els.lon.value = p.origin.lon; }
     if (typeof p.trailsOn === "boolean") state.trailsOn = p.trailsOn;
+    if (typeof p.hideGround === "boolean") state.hideGround = p.hideGround;
   } catch (e) {}
 }
 function savePrefs() {
-  localStorage.setItem("r4d4rvu", JSON.stringify({ rangeMi: state.rangeMi, origin: state.origin, trailsOn: state.trailsOn }));
+  localStorage.setItem("r4d4rvu", JSON.stringify({ rangeMi: state.rangeMi, origin: state.origin, trailsOn: state.trailsOn, hideGround: state.hideGround }));
 }
 const R_EARTH = 6371, toRad = d => d * Math.PI / 180, toDeg = r => r * 180 / Math.PI;
 function haversine(a, b) {
@@ -236,7 +243,8 @@ async function fetchAircraft() {
       heading: (a.track != null ? a.track : a.true_heading),
       vrate: (a.baro_rate != null ? a.baro_rate : a.geom_rate),
       baro_alt: alt, squawk: sq, emergency: !!EMERG[sq],
-      mil: (typeof a.dbFlags === "number") ? (a.dbFlags & 1) === 1 : false,
+      mil: (((typeof a.dbFlags === "number") ? a.dbFlags : 0) & 1) === 1,
+      gov: (((typeof a.dbFlags === "number") ? a.dbFlags : 0) & 14) !== 0,
       dist, brg: bearing(state.origin, pos), seen: now
     });
   }
@@ -256,7 +264,7 @@ function seedDemo() {
       type: types[i % types.length], brg: Math.random()*360, distFrac: Math.random(),
       heading: Math.random()*360, speed: 220 + Math.random()*260,
       vrate: Math.round((Math.random()-0.5)*3000), baro_alt: 2000 + Math.floor(Math.random()*36000),
-      onGround: false, mil: i === 2, emergency: i === 5, squawk: i === 5 ? "7700" : null
+      onGround: false, mil: i === 2, gov: i === 8, emergency: i === 5, squawk: i === 5 ? "7700" : null
     });
   }
 }
@@ -274,7 +282,7 @@ function stepDemo(dt) {
     list.push({
       icao24: a.icao24, callsign: a.callsign, origin_country: a.type + " · DEMO",
       heading: a.heading, velocity: a.speed, vrate: a.vrate, baro_alt: a.baro_alt,
-      onGround: false, squawk: a.squawk, emergency: a.emergency, mil: a.mil,
+      onGround: false, squawk: a.squawk, emergency: a.emergency, mil: a.mil, gov: a.gov,
       dist: frac * state.rangeKm, brg: a.brg, seen: now
     });
   }
@@ -302,19 +310,26 @@ function altColor(ft, onGround) {
 function blipColor(a) {
   if (a.emergency) return [255,93,93];
   if (a.mil) return [255,157,60];
+  if (a.gov) return [199,125,255];
   return altColor(a.baro_alt, a.onGround);
 }
+function visList() {
+  if (!state.hideGround) return state.aircraft;
+  return state.aircraft.filter(a => !a.onGround || a.icao24 === state.tracked);
+}
 function updateReadout() {
-  els.count.textContent = state.aircraft.length;
+  const _v = visList(), _g = state.aircraft.filter(a => a.onGround).length;
+  els.count.textContent = _v.length + (state.hideGround && _g ? " (+" + _g + " gnd)" : "");
   els.range.textContent = state.rangeMi + " mi";
   els.pos.textContent = state.origin ? state.origin.lat.toFixed(3) + ", " + state.origin.lon.toFixed(3) : "—";
   els.updated.textContent = state.lastFetch ? new Date(state.lastFetch).toLocaleTimeString() : "—";
   updateStats();
+  if (state.tracked) state.selected = state.tracked;
   if (state.selected) renderDetail();
 }
 function updateStats() {
   let closest = null, highest = null, fastest = null;
-  for (const x of state.aircraft) {
+  for (const x of visList()) {
     if (!closest || x.dist < closest.dist) closest = x;
     if (x.baro_alt != null && (!highest || x.baro_alt > highest.baro_alt)) highest = x;
     if (x.velocity != null && (!fastest || x.velocity > fastest.velocity)) fastest = x;
@@ -323,22 +338,30 @@ function updateStats() {
   setText("s-closest", closest ? tag(closest) + "  " + (closest.dist*MI_PER_KM).toFixed(1) + " mi" : "—");
   setText("s-highest", highest ? tag(highest) + "  " + fmtAlt(highest.baro_alt) : "—");
   setText("s-fastest", fastest ? tag(fastest) + "  " + fmtSpd(fastest.velocity) : "—");
-  const oh = state.aircraft.filter(x => !x.onGround && x.dist*MI_PER_KM <= 1.5).sort((p,q)=>p.dist-q.dist)[0];
+  const oh = visList().filter(x => !x.onGround && x.dist*MI_PER_KM <= 1.5).sort((p,q)=>p.dist-q.dist)[0];
   const ohEl = $("overhead");
   if (oh) { ohEl.style.display = "block"; ohEl.textContent = "✈ OVERHEAD: " + tag(oh) + " · " + fmtAlt(oh.baro_alt); }
   else ohEl.style.display = "none";
 }
 function renderDetail() {
   const a = state.aircraft.find(x => x.icao24 === state.selected);
-  if (!a) { els.detail.classList.remove("show"); setText("d-call", "click a blip →"); return; }
+  if (els.track) els.track.style.display = state.selected ? "block" : "none";
+  if (!a) {
+    els.detail.classList.remove("show");
+    setText("d-call", (state.tracked && state.selected === state.tracked) ? "⚠ signal lost — out of range" : "click a blip →");
+    if (els.track) { const on = !!state.tracked; els.track.textContent = on ? "🎯 Tracking — tap to release" : "🎯 Track this aircraft"; els.track.classList.toggle("active", on); }
+    return;
+  }
   els.detail.classList.add("show");
   setText("d-call", a.callsign); setText("d-icao", a.icao24);
   setText("d-origin", a.origin_country || "—"); setText("d-alt", fmtAlt(a.baro_alt));
   setText("d-spd", fmtSpd(a.velocity)); setText("d-hdg", fmtHdg(a.heading));
   setText("d-vert", fmtVrt(a.vrate));
-  setText("d-sq", a.squawk ? (a.squawk + (EMERG[a.squawk] ? " ⚠ " + EMERG[a.squawk] : "") + (a.mil ? " · MIL" : "")) : (a.mil ? "MIL" : "—"));
-  $("d-sq").style.color = a.emergency ? "#ff5d5d" : (a.mil ? "#ff9d3c" : "var(--green)");
+  const _tag = a.mil ? " · MIL" : (a.gov ? " · GOV" : "");
+  setText("d-sq", a.squawk ? (a.squawk + (EMERG[a.squawk] ? " ⚠ " + EMERG[a.squawk] : "") + _tag) : (_tag ? _tag.slice(3) : "—"));
+  $("d-sq").style.color = a.emergency ? "#ff5d5d" : (a.mil ? "#ff9d3c" : (a.gov ? "#c77dff" : "var(--green)"));
   setText("d-rb", (a.dist * MI_PER_KM).toFixed(1) + " mi / " + Math.round(a.brg) + "°");
+  if (els.track) { const on = state.tracked === a.icao24; els.track.textContent = on ? "🎯 Tracking — tap to release" : "🎯 Track this aircraft"; els.track.classList.toggle("active", on); }
   if (state._enrichedFor !== a.icao24) { state._enrichedFor = a.icao24; enrichSelected(a); }
 }
 let enrichSeq = 0;
@@ -437,10 +460,12 @@ function drawSweep() {
 }
 function drawBlips(now) {
   ctx.textAlign = "start";
-  for (const a of state.aircraft) {
+  const _vis = visList();
+  for (const a of _vis) {
     const p = planeXY(a);
     let rel = (sweepAngle - a.brg + 360) % 360;
     let glow = Math.max(0, 1 - rel / 90); glow = 0.28 + glow * 0.72;
+    if (a.icao24 === state.tracked) glow = 1;
     const sel = a.icao24 === state.selected;
     let col = blipColor(a);
     if (a.emergency && (now % 600) < 300) col = [255,30,30];
@@ -459,6 +484,17 @@ function drawBlips(now) {
       ctx.strokeStyle = "rgba(255,157,60," + glow + ")"; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.arc(p.x, p.y, 13, 0, Math.PI*2); ctx.stroke();
     }
+    if (a.gov && !a.mil) {
+      ctx.strokeStyle = "rgba(199,125,255," + glow + ")"; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(p.x, p.y, 13, 0, Math.PI*2); ctx.stroke();
+    }
+    if (a.icao24 === state.tracked) {
+      ctx.strokeStyle = "rgba(120,230,255,0.7)"; ctx.lineWidth = 1.5; ctx.setLineDash([7,7]);
+      ctx.beginPath(); ctx.moveTo(C, C); ctx.lineTo(p.x, p.y); ctx.stroke(); ctx.setLineDash([]);
+      const pulse = 17 + Math.sin(now/220)*3;
+      ctx.strokeStyle = "rgba(120,230,255,0.95)"; ctx.lineWidth = 2.5;
+      ctx.beginPath(); ctx.arc(p.x, p.y, pulse, 0, Math.PI*2); ctx.stroke();
+    }
     ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(toRad(a.heading || 0));
     ctx.fillStyle = "rgba(" + col[0] + "," + col[1] + "," + col[2] + "," + glow + ")";
     ctx.shadowColor = "rgba(" + col[0] + "," + col[1] + "," + col[2] + ",0.85)";
@@ -475,9 +511,9 @@ function drawBlips(now) {
     }
   }
   // prune stale trails for gone aircraft
-  const live = new Set(state.aircraft.map(a => a.icao24));
+  const live = new Set(_vis.map(a => a.icao24));
   for (const id in trails) { if (!live.has(id)) { while (trails[id].length && now - trails[id][0].t > CFG.trailMs) trails[id].shift(); if (!trails[id].length) delete trails[id]; } }
-  state._screen = state.aircraft.map(a => { const p = planeXY(a); return { icao24: a.icao24, x: p.x, y: p.y }; });
+  state._screen = _vis.map(a => { const p = planeXY(a); return { icao24: a.icao24, x: p.x, y: p.y }; });
 }
 function crossed(prev, cur, b) { return prev <= cur ? (b > prev && b <= cur) : (b > prev || b <= cur); }
 function ensureAudio() { if (!audioCtx) { try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch(e){} } }
@@ -528,7 +564,9 @@ els.canvas.addEventListener("click", e => {
   const x = (e.clientX - r.left) * (SIZE / r.width), y = (e.clientY - r.top) * (SIZE / r.height);
   let best = null, bd = 55;
   for (const s of (state._screen || [])) { const d = Math.hypot(s.x - x, s.y - y); if (d < bd) { bd = d; best = s.icao24; } }
-  state.selected = best; renderDetail();
+  if (best) { state.selected = best; if (state.tracked) state.tracked = best; }
+  else if (!state.tracked) { state.selected = null; }
+  renderDetail();
 });
 els.rangeSel.addEventListener("change", () => {
   state.rangeMi = parseInt(els.rangeSel.value, 10); state.rangeKm = state.rangeMi * KM_PER_MI;
@@ -545,7 +583,20 @@ els.trailsBtn.addEventListener("click", () => {
   state.trailsOn = !state.trailsOn;
   if (!state.trailsOn) for (const id in trails) delete trails[id];
   els.trailsBtn.textContent = "✦ Trails: " + (state.trailsOn ? "on" : "off");
+  els.ground.textContent = "🛬 Ground: " + (state.hideGround ? "hidden" : "shown");
+  els.ground.classList.toggle("active", state.hideGround);
   savePrefs();
+});
+els.ground.addEventListener("click", () => {
+  state.hideGround = !state.hideGround;
+  els.ground.textContent = "🛬 Ground: " + (state.hideGround ? "hidden" : "shown");
+  els.ground.classList.toggle("active", state.hideGround);
+  savePrefs(); updateReadout();
+});
+els.track.addEventListener("click", () => {
+  if (!state.selected) return;
+  state.tracked = (state.tracked === state.selected) ? null : state.selected;
+  renderDetail();
 });
 els.save.addEventListener("click", () => {
   if (els.lat.value && els.lon.value) state.origin = { lat: parseFloat(els.lat.value), lon: parseFloat(els.lon.value) };
