@@ -19,13 +19,13 @@
   }
   body { display: flex; flex-direction: column; align-items: center; padding: 16px 12px 40px; gap: 16px; }
   header {
-    width: 100%; max-width: 900px; display: flex; align-items: baseline; justify-content: space-between;
+    width: 100%; max-width: 1120px; display: flex; align-items: baseline; justify-content: space-between;
     flex-wrap: wrap; gap: 6px; border-bottom: 1px solid var(--green-faint); padding-bottom: 10px;
   }
   header h1 { font-size: 1.4rem; letter-spacing: 4px; margin: 0; color: var(--green); text-shadow: 0 0 8px rgba(54,255,139,0.5); }
   header .tag { font-size: 0.7rem; color: var(--green-dim); letter-spacing: 2px; }
-  .layout { width: 100%; max-width: 900px; display: flex; gap: 20px; flex-wrap: wrap; justify-content: center; align-items: flex-start; }
-  .scope-wrap { position: relative; width: min(92vw, 520px); aspect-ratio: 1 / 1; flex: 0 0 auto; align-self: flex-start; }
+  .layout { width: 100%; max-width: 1120px; display: flex; gap: 20px; flex-wrap: wrap; justify-content: center; align-items: flex-start; }
+  .scope-wrap { position: relative; width: min(94vw, 720px); aspect-ratio: 1 / 1; flex: 1 1 460px; min-width: 300px; max-width: 720px; align-self: flex-start; }
   canvas#radar {
     width: 100%; height: 100%; display: block; border-radius: 50%; cursor: crosshair;
     background: radial-gradient(circle at 50% 50%, #053a1d 0%, #021c0d 60%, #001206 100%);
@@ -61,7 +61,7 @@
   .hint { font-size: 0.66rem; color: var(--green-dim); line-height: 1.4; margin: 4px 0 10px; }
   a { color: var(--green); }
   #detail { display: block; } #detail.show { border-color: var(--green-dim); }
-  footer { font-size: 0.66rem; color: var(--green-dim); letter-spacing: 1px; text-align: center; max-width: 900px; }
+  footer { font-size: 0.66rem; color: var(--green-dim); letter-spacing: 1px; text-align: center; max-width: 1120px; }
 </style>
 </head>
 <body>
@@ -285,7 +285,7 @@ function drawGrid() {
   for (let i = 1; i <= 4; i++) {
     ctx.strokeStyle = "rgba(54,255,139,0.22)";
     ctx.beginPath(); ctx.arc(C, C, (RR * i) / 4, 0, Math.PI * 2); ctx.stroke();
-    ctx.fillStyle = "rgba(54,255,139,0.4)"; ctx.font = "20px monospace";
+    ctx.fillStyle = "rgba(54,255,139,0.45)"; ctx.font = "24px monospace";
     ctx.fillText(Math.round((state.rangeMi * i) / 4) + "mi", C + 6, C - (RR * i) / 4 + 22);
   }
   for (let d = 0; d < 360; d += 30) {
@@ -293,7 +293,7 @@ function drawGrid() {
     ctx.strokeStyle = d % 90 === 0 ? "rgba(54,255,139,0.30)" : "rgba(54,255,139,0.12)";
     ctx.beginPath(); ctx.moveTo(C, C); ctx.lineTo(C + Math.sin(a) * RR, C - Math.cos(a) * RR); ctx.stroke();
   }
-  ctx.fillStyle = "#36ff8b"; ctx.font = "bold 26px monospace";
+  ctx.fillStyle = "#36ff8b"; ctx.font = "bold 34px monospace";
   ctx.textAlign = "center"; ctx.textBaseline = "middle";
   ctx.fillText("N", C, C - RR - 18); ctx.fillText("S", C, C + RR + 18);
   ctx.fillText("E", C + RR + 18, C); ctx.fillText("W", C - RR - 18, C);
@@ -325,14 +325,14 @@ function drawBlips() {
     ctx.fillStyle = sel ? "rgba(255,209,102," + glow + ")" : "rgba(54,255,139," + glow + ")";
     ctx.shadowColor = sel ? "rgba(255,209,102,0.8)" : "rgba(54,255,139,0.8)";
     ctx.shadowBlur = 10 * glow;
-    ctx.beginPath(); ctx.moveTo(0, -9); ctx.lineTo(6, 7); ctx.lineTo(0, 3); ctx.lineTo(-6, 7); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(0, -12); ctx.lineTo(8, 9); ctx.lineTo(0, 4); ctx.lineTo(-8, 9); ctx.closePath(); ctx.fill();
     ctx.restore(); ctx.shadowBlur = 0;
     ctx.fillStyle = sel ? "rgba(255,225,150," + (0.5+glow*0.5) + ")" : "rgba(150,255,200," + (0.35+glow*0.5) + ")";
-    ctx.font = (sel ? "bold " : "") + "18px monospace";
-    ctx.fillText(a.callsign, p.x + 10, p.y - 6);
+    ctx.font = (sel ? "bold " : "") + "23px monospace";
+    ctx.fillText(a.callsign, p.x + 13, p.y - 7);
     if (sel || glow > 0.7) {
-      ctx.fillStyle = "rgba(120,220,170," + (0.3+glow*0.4) + ")"; ctx.font = "14px monospace";
-      ctx.fillText(fmtAlt(a.baro_alt), p.x + 10, p.y + 11);
+      ctx.fillStyle = "rgba(120,220,170," + (0.3+glow*0.4) + ")"; ctx.font = "18px monospace";
+      ctx.fillText(fmtAlt(a.baro_alt), p.x + 13, p.y + 13);
     }
   }
   state._screen = state.aircraft.map(a => { const p = planeXY(a); return { icao24: a.icao24, x: p.x, y: p.y }; });
