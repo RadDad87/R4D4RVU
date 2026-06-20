@@ -85,6 +85,14 @@
   .legend i { display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:4px; vertical-align:middle; box-shadow:0 0 5px currentColor; }
   #overhead { display:none; margin-top:8px; font-size:0.72rem; color:var(--amber); letter-spacing:1px; }
   footer { font-size: 0.66rem; color: var(--green-dim); letter-spacing: 1px; text-align: center; max-width: 1120px; }
+  body.light { background: radial-gradient(circle at 50% 0%, #ffffff00, #e7ece8 70%), #eef2ee; color: #14201a; }
+  body.light header { border-color: rgba(0,0,0,0.12); }
+  body.light .card { background: linear-gradient(180deg, #ffffff, #eef3ef); border-color: rgba(0,0,0,0.12); }
+  body.light .readout .k, body.light label, body.light .tag, body.light .hint, body.light footer, body.light details summary { color: #5b6b62; }
+  body.light input, body.light select, body.light button { background: #ffffff; color: #14201a; border-color: rgba(0,0,0,0.18); }
+  body.light button { background: #e6efe9; }
+  body.light button:hover { background: #d3e7da; }
+  body.light details summary { background: #e6efe9; }
   @media (max-width: 680px) {
     body { padding: 10px 8px 28px; gap: 12px; }
     header { padding-bottom: 8px; }
@@ -169,7 +177,10 @@
           <span class="k">Squawk</span><span class="v" id="d-sq">—</span>
           <span class="k">Range/Brg</span><span class="v" id="d-rb">—</span>
         </div>
-        <button id="track" class="ghost" style="margin-top:10px;display:none;">🎯 Track this aircraft</button>
+        <div class="row" id="trackrow" style="margin-top:10px;display:none;">
+          <button id="track" class="ghost">🎯 Track this aircraft</button>
+          <button id="share" class="ghost">🔗 Share</button>
+        </div>
         <img id="d-photo" alt="aircraft photo" />
         <div class="hint" id="d-credit" style="display:none;"></div>
       </div>
@@ -215,6 +226,13 @@
         <div class="row" style="margin-bottom:10px;">
           <button id="ground" class="ghost active">🛬 Ground: hidden</button>
         </div>
+        <div class="row" style="margin-bottom:10px;">
+          <button id="theme" class="ghost">🎨 Green</button>
+          <button id="light" class="ghost">◐ Light</button>
+        </div>
+        <div class="row" style="margin-bottom:10px;">
+          <button id="soundtheme" class="ghost">🔉 Sonar</button>
+        </div>
         <details>
           <summary>⚙ Set location manually / options</summary>
           <p class="hint">Live data from <a href="https://airplanes.live" target="_blank" rel="noopener">airplanes.live</a>; flight routes from <a href="https://www.adsbdb.com" target="_blank" rel="noopener">adsbdb</a>; photos from <a href="https://www.planespotters.net" target="_blank" rel="noopener">planespotters.net</a>. No API key needed.</p>
@@ -235,19 +253,54 @@
 "use strict";
 const CFG = { dataUrl: "https://api.airplanes.live/v2/point/", refreshMs: 12000, sweepPeriodMs: 4000, trailMs: 30000 };
 const KM_PER_MI = 1.60934, MI_PER_KM = 0.621371, KM_PER_NM = 1.852;
+const THEMES = {
+  green: { name:"Green", accent:"#36ff8b", dim:"#1f9c54", faint:"rgba(54,255,139,0.18)", rgb:[54,255,139], text:"#b8ffd4", bg:"radial-gradient(circle at 50% 50%, #053a1d 0%, #021c0d 60%, #001206 100%)" },
+  amber: { name:"Amber", accent:"#ffc24a", dim:"#b3781f", faint:"rgba(255,194,74,0.18)", rgb:[255,194,74], text:"#ffe7bf", bg:"radial-gradient(circle at 50% 50%, #3a2705 0%, #1c1302 60%, #120a00 100%)" },
+  ice:   { name:"Ice",   accent:"#46e6ff", dim:"#1f8aa0", faint:"rgba(70,230,255,0.18)", rgb:[70,230,255], text:"#c2f6ff", bg:"radial-gradient(circle at 50% 50%, #053040 0%, #02161c 60%, #000c12 100%)" },
+  alert: { name:"Alert", accent:"#ff6b6b", dim:"#b03a3a", faint:"rgba(255,107,107,0.18)", rgb:[255,107,107], text:"#ffd2d2", bg:"radial-gradient(circle at 50% 50%, #3a0c0c 0%, #1c0404 60%, #120000 100%)" }
+};
+const THEME_ORDER = ["green","amber","ice","alert"];
+const SOUNDS = {
+  sonar: { name:"Sonar", type:"sine",     base:1.0,  tail:1.3,  wet:0.28, rise:0.94 },
+  sub:   { name:"Sub",   type:"sine",     base:0.6,  tail:1.9,  wet:0.42, rise:0.9 },
+  blip:  { name:"Blip",  type:"triangle", base:1.5,  tail:0.13, wet:0.0,  rise:1.0 },
+  soft:  { name:"Soft",  type:"sine",     base:0.85, tail:0.5,  wet:0.12, rise:1.0 }
+};
+const SOUND_ORDER = ["sonar","sub","blip","soft"];
+let ACCENT = THEMES.green.rgb;
+const acc = a => "rgba(" + ACCENT[0] + "," + ACCENT[1] + "," + ACCENT[2] + "," + a + ")";
+function applyTheme(key) {
+  const th = THEMES[key]; if (!th) return;
+  state.theme = key; ACCENT = th.rgb;
+  const r = document.documentElement.style;
+  r.setProperty("--green", th.accent); r.setProperty("--green-dim", th.dim);
+  r.setProperty("--green-faint", th.faint); r.setProperty("--text", th.text);
+  if (els.canvas) els.canvas.style.background = th.bg;
+  if (els.themeBtn) els.themeBtn.textContent = "🎨 " + th.name;
+}
+function applyLight() {
+  document.body.classList.toggle("light", state.light);
+  if (els.lightBtn) els.lightBtn.textContent = state.light ? "◑ Dark" : "◐ Light";
+}
+function applySoundTheme() {
+  const sd = SOUNDS[state.soundTheme] || SOUNDS.sonar;
+  if (sonarWet) sonarWet.gain.value = sd.wet;
+  if (els.soundThemeBtn) els.soundThemeBtn.textContent = "🔉 " + sd.name;
+}
 const $ = id => document.getElementById(id);
 const setText = (id, t) => { const e = $(id); if (e) e.textContent = t; };
 const els = {
   canvas: $("radar"), mode: $("st-mode"), count: $("st-count"), range: $("st-range"),
   pos: $("st-pos"), updated: $("st-updated"), next: $("st-next"), rangeSel: $("range"),
   locate: $("locate"), pause: $("pause"), save: $("save"), demo: $("demo"),
-  sound: $("sound"), trailsBtn: $("trails"), ground: $("ground"), track: $("track"), lat: $("lat"), lon: $("lon"), detail: $("detail")
+  sound: $("sound"), trailsBtn: $("trails"), ground: $("ground"), track: $("track"), share: $("share"), trackrow: $("trackrow"), themeBtn: $("theme"), lightBtn: $("light"), soundThemeBtn: $("soundtheme"), lat: $("lat"), lon: $("lon"), detail: $("detail")
 };
 const ctx = els.canvas.getContext("2d");
 const state = {
   rangeMi: 60, rangeKm: 60 * KM_PER_MI, origin: null, aircraft: [], selected: null,
   mode: "demo", paused: false, lastFetch: 0, nextFetch: 0, _screen: [],
-  soundOn: false, trailsOn: true, _enrichedFor: null, hideGround: true, tracked: null
+  soundOn: false, trailsOn: true, _enrichedFor: null, hideGround: true, tracked: null,
+  theme: "green", light: false, soundTheme: "sonar"
 };
 const trails = {};            // icao24 -> [{x,y,t,col}]
 const enrichCache = {};       // icao24 -> {airline,route,photo,credit}
@@ -260,10 +313,13 @@ function loadPrefs() {
     if (p.origin) { state.origin = p.origin; els.lat.value = p.origin.lat; els.lon.value = p.origin.lon; }
     if (typeof p.trailsOn === "boolean") state.trailsOn = p.trailsOn;
     if (typeof p.hideGround === "boolean") state.hideGround = p.hideGround;
+    if (p.theme && THEMES[p.theme]) state.theme = p.theme;
+    if (typeof p.light === "boolean") state.light = p.light;
+    if (p.soundTheme && SOUNDS[p.soundTheme]) state.soundTheme = p.soundTheme;
   } catch (e) {}
 }
 function savePrefs() {
-  localStorage.setItem("r4d4rvu", JSON.stringify({ rangeMi: state.rangeMi, origin: state.origin, trailsOn: state.trailsOn, hideGround: state.hideGround }));
+  localStorage.setItem("r4d4rvu", JSON.stringify({ rangeMi: state.rangeMi, origin: state.origin, trailsOn: state.trailsOn, hideGround: state.hideGround, theme: state.theme, light: state.light, soundTheme: state.soundTheme }));
 }
 const R_EARTH = 6371, toRad = d => d * Math.PI / 180, toDeg = r => r * 180 / Math.PI;
 function haversine(a, b) {
@@ -408,7 +464,7 @@ function updateStats() {
 }
 function renderDetail() {
   const a = state.aircraft.find(x => x.icao24 === state.selected);
-  if (els.track) els.track.style.display = state.selected ? "block" : "none";
+  if (els.trackrow) els.trackrow.style.display = state.selected ? "flex" : "none";
   if (!a) {
     els.detail.classList.remove("show");
     setText("d-call", (state.tracked && state.selected === state.tracked) ? "⚠ signal lost — out of range" : "click a blip →");
@@ -478,22 +534,22 @@ function drawGrid() {
   ctx.clearRect(0, 0, SIZE, SIZE);
   ctx.lineWidth = 1.5;
   for (let i = 1; i <= 4; i++) {
-    ctx.strokeStyle = "rgba(54,255,139,0.22)";
+    ctx.strokeStyle = acc(0.22);
     ctx.beginPath(); ctx.arc(C, C, (RR * i) / 4, 0, Math.PI * 2); ctx.stroke();
-    ctx.fillStyle = "rgba(54,255,139,0.45)"; ctx.font = "24px monospace";
+    ctx.fillStyle = acc(0.45); ctx.font = "24px monospace";
     ctx.fillText(Math.round((state.rangeMi * i) / 4) + "mi", C + 6, C - (RR * i) / 4 + 24);
   }
   for (let d = 0; d < 360; d += 30) {
     const a = toRad(d);
-    ctx.strokeStyle = d % 90 === 0 ? "rgba(54,255,139,0.30)" : "rgba(54,255,139,0.12)";
+    ctx.strokeStyle = d % 90 === 0 ? acc(0.30) : acc(0.12);
     ctx.beginPath(); ctx.moveTo(C, C); ctx.lineTo(C + Math.sin(a) * RR, C - Math.cos(a) * RR); ctx.stroke();
   }
-  ctx.fillStyle = "#36ff8b"; ctx.font = "bold 34px monospace";
+  ctx.fillStyle = acc(1); ctx.font = "bold 34px monospace";
   ctx.textAlign = "center"; ctx.textBaseline = "middle";
   ctx.fillText("N", C, C - RR - 20); ctx.fillText("S", C, C + RR + 20);
   ctx.fillText("E", C + RR + 20, C); ctx.fillText("W", C - RR - 20, C);
   ctx.textAlign = "start"; ctx.textBaseline = "alphabetic";
-  ctx.fillStyle = "#9bffc8"; ctx.beginPath(); ctx.arc(C, C, 5, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = acc(0.95); ctx.beginPath(); ctx.arc(C, C, 5, 0, Math.PI*2); ctx.fill();
 }
 function drawTrails(now) {
   for (const id in trails) {
@@ -514,11 +570,11 @@ function drawSweep() {
   const trail = 60;
   for (let t = 0; t < trail; t++) {
     const alpha = (1 - t / trail) * 0.16;
-    ctx.strokeStyle = "rgba(54,255,139," + alpha + ")"; ctx.lineWidth = 2;
+    ctx.strokeStyle = acc(alpha); ctx.lineWidth = 2;
     ctx.beginPath(); ctx.moveTo(0, 0);
     const a = toRad(-t); ctx.lineTo(Math.sin(a) * RR, -Math.cos(a) * RR); ctx.stroke();
   }
-  ctx.strokeStyle = "rgba(120,255,180,0.95)"; ctx.shadowColor = "rgba(54,255,139,0.9)";
+  ctx.strokeStyle = acc(0.95); ctx.shadowColor = acc(0.9);
   ctx.shadowBlur = 18; ctx.lineWidth = 3;
   ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, -RR); ctx.stroke();
   ctx.restore(); ctx.shadowBlur = 0;
@@ -590,21 +646,22 @@ function ensureAudio() {
     sonarWet = audioCtx.createGain(); sonarWet.gain.value = 0.28;                 // quiet echo
     sonarDelay.connect(fb); fb.connect(sonarDelay);
     sonarDelay.connect(sonarWet); sonarWet.connect(audioCtx.destination);
+    applySoundTheme();
   } catch (e) {}
 }
-function ping(freq, dur, vol) {
+function ping(freq, _dur, vol) {
   if (!state.soundOn || !audioCtx) return;
-  const t = audioCtx.currentTime, len = dur || 1.3;
+  const sd = SOUNDS[state.soundTheme] || SOUNDS.sonar;
+  const t = audioCtx.currentTime, len = sd.tail, f = freq * sd.base;
   const o = audioCtx.createOscillator(), g = audioCtx.createGain();
-  o.type = "sine";
-  o.frequency.setValueAtTime(freq * 0.94, t);
-  o.frequency.exponentialRampToValueAtTime(freq, t + 0.045);  // subtle onset rise
+  o.type = sd.type;
+  o.frequency.setValueAtTime(f * sd.rise, t);
+  o.frequency.exponentialRampToValueAtTime(f, t + 0.045);
   g.gain.setValueAtTime(0.0001, t);
-  g.gain.exponentialRampToValueAtTime(vol, t + 0.008);        // sharp attack
-  g.gain.exponentialRampToValueAtTime(0.0001, t + len);       // long smooth singing ring
-  o.connect(g);
-  g.connect(audioCtx.destination);                            // dry ping
-  if (sonarDelay) g.connect(sonarDelay);                      // one faint echo
+  g.gain.exponentialRampToValueAtTime(vol, t + 0.008);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + len);
+  o.connect(g); g.connect(audioCtx.destination);
+  if (sonarDelay && sd.wet > 0) g.connect(sonarDelay);
   o.start(t); o.stop(t + len + 0.05);
 }
 function frame(t) {
@@ -681,6 +738,24 @@ els.track.addEventListener("click", () => {
   state.tracked = (state.tracked === state.selected) ? null : state.selected;
   renderDetail();
 });
+els.themeBtn.addEventListener("click", () => {
+  const i = (THEME_ORDER.indexOf(state.theme) + 1) % THEME_ORDER.length;
+  applyTheme(THEME_ORDER[i]); savePrefs();
+});
+els.lightBtn.addEventListener("click", () => { state.light = !state.light; applyLight(); savePrefs(); });
+els.soundThemeBtn.addEventListener("click", () => {
+  const i = (SOUND_ORDER.indexOf(state.soundTheme) + 1) % SOUND_ORDER.length;
+  state.soundTheme = SOUND_ORDER[i]; applySoundTheme(); savePrefs();
+  if (state.soundOn) { ensureAudio(); if (audioCtx && audioCtx.state === "suspended") audioCtx.resume(); ping(800, 1, 0.06); }
+});
+els.share.addEventListener("click", async () => {
+  if (!state.selected) return;
+  const o = state.origin || { lat: 0, lon: 0 };
+  const url = location.origin + location.pathname + "?lat=" + o.lat.toFixed(4) + "&lon=" + o.lon.toFixed(4) + "&range=" + state.rangeMi + "&track=" + encodeURIComponent(state.selected);
+  try { await navigator.clipboard.writeText(url); els.share.textContent = "✓ Copied!"; }
+  catch (e) { window.prompt("Copy this share link:", url); }
+  setTimeout(() => { els.share.textContent = "🔗 Share"; }, 1600);
+});
 els.save.addEventListener("click", () => {
   if (els.lat.value && els.lon.value) state.origin = { lat: parseFloat(els.lat.value), lon: parseFloat(els.lon.value) };
   savePrefs();
@@ -714,8 +789,22 @@ async function tick(force) {
   try { await fetchAircraft(); } catch (e) { setMode("error", "fetch"); }
 }
 function boot() {
-  loadPrefs(); updateReadout(); setMode("demo"); seedDemo();
+  loadPrefs();
+  try {
+    const q = new URLSearchParams(location.search);
+    const qlat = parseFloat(q.get("lat")), qlon = parseFloat(q.get("lon"));
+    if (!isNaN(qlat) && !isNaN(qlon)) { state.origin = { lat: qlat, lon: qlon }; els.lat.value = qlat.toFixed(4); els.lon.value = qlon.toFixed(4); }
+    const qr = parseInt(q.get("range"), 10);
+    if ([15,30,60,150,300].includes(qr)) { state.rangeMi = qr; state.rangeKm = qr * KM_PER_MI; els.rangeSel.value = String(qr); }
+    const qt = q.get("track");
+    if (qt) { state.tracked = qt; state.selected = qt; }
+  } catch (e) {}
+  applyTheme(state.theme); applyLight();
   els.trailsBtn.textContent = "✦ Trails: " + (state.trailsOn ? "on" : "off");
+  els.ground.textContent = "🛬 Ground: " + (state.hideGround ? "hidden" : "shown");
+  els.ground.classList.toggle("active", state.hideGround);
+  els.soundThemeBtn.textContent = "🔉 " + (SOUNDS[state.soundTheme] || SOUNDS.sonar).name;
+  updateReadout(); setMode("demo"); seedDemo();
   if (state.origin) { setMode("live"); tick(true); } else { requestLocation(); }
   setInterval(() => tick(false), 1000);
   requestAnimationFrame(frame);
