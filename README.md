@@ -55,7 +55,7 @@ As of 2025 OpenSky uses **OAuth2 client-credentials** (the old username/password
 1. Create a free account at [opensky-network.org](https://opensky-network.org).
 2. Open your [account page](https://opensky-network.org/my-opensky/account) and create an **API client**.
 3. Copy the **`client_id`** and **`client_secret`**.
-4. In R4D4RVU, open **⚙ OpenSky credentials & manual position**, paste both values, and click **Save & connect**.
+4. In R4D4RVU, open **⚙ OpenSky credentials & manual position**, paste both values, and click **Save & connect**. Or just click **Import OpenSky JSON file** and pick the credentials file OpenSky gave you — it fills both fields automatically.
 
 Credentials are stored **only in your browser** (`localStorage`) and are sent **directly to OpenSky** from your machine. They are never transmitted anywhere else.
 

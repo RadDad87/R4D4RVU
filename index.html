@@ -125,6 +125,7 @@
           <summary>OpenSky credentials &amp; manual position</summary>
           <div class="field"><label for="cid">OpenSky client_id</label><input id="cid" type="text" autocomplete="off" placeholder="your-api-client" /></div>
           <div class="field"><label for="csec">OpenSky client_secret</label><input id="csec" type="password" autocomplete="off" placeholder="********" /></div>
+          <div class="field" style="margin-bottom:6px;"><button id="importBtn" class="ghost" type="button" style="width:100%;">&uarr; Import OpenSky JSON file</button><input id="importFile" type="file" accept=".json,application/json" style="display:none" /></div>
           <div class="row">
             <div class="field"><label for="lat">Latitude</label><input id="lat" type="number" step="0.0001" placeholder="auto" /></div>
             <div class="field"><label for="lon">Longitude</label><input id="lon" type="number" step="0.0001" placeholder="auto" /></div>
@@ -151,7 +152,8 @@ const els = {
   canvas: $("radar"), mode: $("st-mode"), count: $("st-count"), range: $("st-range"),
   pos: $("st-pos"), updated: $("st-updated"), next: $("st-next"), rangeSel: $("range"),
   locate: $("locate"), pause: $("pause"), save: $("save"), demo: $("demo"),
-  cid: $("cid"), csec: $("csec"), lat: $("lat"), lon: $("lon"), detail: $("detail")
+  cid: $("cid"), csec: $("csec"), lat: $("lat"), lon: $("lon"), detail: $("detail"),
+  importBtn: $("importBtn"), importFile: $("importFile")
 };
 const ctx = els.canvas.getContext("2d");
 const state = {
@@ -405,6 +407,26 @@ els.save.addEventListener("click", () => {
 els.demo.addEventListener("click", () => {
   if (!state.origin) state.origin = { lat: 51.4700, lon: -0.4543 };
   setMode("demo"); seedDemo(); updateReadout();
+});
+els.importBtn.addEventListener("click", () => els.importFile.click());
+els.importFile.addEventListener("change", e => {
+  const f = e.target.files && e.target.files[0];
+  if (!f) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    let j;
+    try { j = JSON.parse(reader.result); }
+    catch (err) { alert("That file isn't valid JSON."); return; }
+    const cid = j.clientId || j.client_id || j.clientID || j.id || "";
+    const csec = j.clientSecret || j.client_secret || j.secret || "";
+    if (!cid || !csec) { alert("Couldn't find clientId / clientSecret in that file."); return; }
+    els.cid.value = cid; els.csec.value = csec;
+    state.creds.cid = cid; state.creds.csec = csec;
+    state.token = null; savePrefs();
+    if (state.origin) { setMode("live"); tick(true); } else { requestLocation(); }
+  };
+  reader.readAsText(f);
+  e.target.value = "";
 });
 function requestLocation() {
   if (!navigator.geolocation) { useFallbackLocation(); return; }
