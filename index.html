@@ -228,15 +228,33 @@
         </div>
         <details>
           <summary>⚙ Set location manually / options</summary>
-          <p class="hint">Online data from <a href="https://airplanes.live" target="_blank" rel="noopener">airplanes.live</a> (routes via adsbdb, photos via planespotters) — or feed a local SDR dongle for fully offline use.</p>
+          <p class="hint">Online data comes from community ADS-B feeds (adsb.lol, adsb.fi, adsb.one) — the radar auto-selects whichever one your browser can reach. Routes via adsbdb, photos via planespotters. Or feed a local SDR dongle for fully offline use.</p>
           <div class="field">
             <label for="source">Data source</label>
             <select id="source">
-              <option value="online">Online — airplanes.live</option>
+              <option value="online">Online — community ADS-B</option>
               <option value="sdr">Local SDR (offline)</option>
               <option value="usb">RTL-SDR (USB) — in browser, experimental</option>
               <option value="hackrf">HackRF One (USB) — in browser, experimental</option>
             </select>
+          </div>
+          <div class="field" id="feedField">
+            <label for="feed">Online feed</label>
+            <select id="feed">
+              <option value="auto">Auto — try each until one answers</option>
+              <option value="adsblol">adsb.lol (direct)</option>
+              <option value="adsbfi">adsb.fi (direct)</option>
+              <option value="adsbone">adsb.one (direct)</option>
+              <option value="alive">airplanes.live (needs API key)</option>
+              <option value="relaylol">adsb.lol via public relay</option>
+              <option value="relayfi">adsb.fi via public relay</option>
+            </select>
+            <p class="hint">airplanes.live closed its free API in 2026, so the radar now probes several community feeds. Leave this on <b>Auto</b> unless you want to pin one.</p>
+            <label for="proxyurl">My CORS proxy (optional, most reliable)</label>
+            <input id="proxyurl" type="text" autocomplete="off" placeholder="https://radar-feed.yourname.workers.dev" />
+            <p class="hint">Deploy <code>cors-proxy-worker.js</code> from the repo to a free Cloudflare Worker and paste its URL here for a private feed that never rate-limits. The radar appends <code>/v2/point/lat/lon/nm</code>.</p>
+            <label for="apikey">airplanes.live API key (optional)</label>
+            <input id="apikey" type="text" autocomplete="off" placeholder="paste key if you feed airplanes.live" />
           </div>
           <p class="hint" id="usbHint" style="display:none;">Plug your SDR (RTL-SDR or HackRF One) into this computer, then pick it in the browser prompt. Desktop Chrome/Edge only. Set your location below so the scope centers on you. (Experimental — decodes ADS-B in the browser; HackRF support is unverified and may need tuning.)</p>
           <p class="hint">🎧 Want to hear the pilots? <a href="./airband.html" style="color:var(--amber,#ffd166);">Open the experimental HackRF airband listener</a> (DCA / IAD / BWI presets).</p>
@@ -268,10 +286,52 @@
       </div>
     </div>
   </div>
-  <footer>Live data &copy; <a href="https://airplanes.live" target="_blank" rel="noopener">airplanes.live</a> contributors. Positions are approximate and for hobby/educational use only — not for navigation.</footer>
+  <footer>Live data &copy; the community ADS-B networks (<a href="https://adsb.lol" target="_blank" rel="noopener">adsb.lol</a>, <a href="https://adsb.fi" target="_blank" rel="noopener">adsb.fi</a>, <a href="https://adsb.one" target="_blank" rel="noopener">adsb.one</a>) and their contributors. Positions are approximate and for hobby/educational use only — not for navigation.</footer>
 <script>
 "use strict";
-const CFG = { dataUrl: "https://api.airplanes.live/v2/point/", refreshMs: 12000, sweepPeriodMs: 4000, trailFade: 25, trailMax: 32, goneMs: 20000 };
+const CFG = { refreshMs: 12000, sweepPeriodMs: 4000, trailFade: 25, trailMax: 32, goneMs: 20000 };
+
+/* ---- Online ADS-B feeds --------------------------------------------------
+   airplanes.live closed its free public API: api.airplanes.live/v2/... now
+   answers 403 ("Please contact us at contact@airplanes.live") unless you feed
+   them data or hold an API key. That single hard-coded URL was why the scope
+   stopped connecting.
+
+   R4D4RVU no longer depends on one provider. It probes the feeds below in
+   order and keeps the first one that answers *from your browser*, so a
+   provider going away (or blocking CORS) degrades to the next instead of
+   killing the radar. Direct feeds are tried first, then public CORS relays,
+   and a proxy you control always wins. See cors-proxy-worker.js in the repo
+   for a free Cloudflare Worker that gives you a private, unthrottled feed. */
+const FEED_DEFS = [
+  { id: "adsblol", label: "adsb.lol",
+    build: (la, lo, nm) => "https://api.adsb.lol/v2/point/" + la + "/" + lo + "/" + nm },
+  { id: "adsbfi", label: "adsb.fi",
+    build: (la, lo, nm) => "https://opendata.adsb.fi/api/v2/lat/" + la + "/lon/" + lo + "/dist/" + nm },
+  { id: "adsbone", label: "adsb.one",
+    build: (la, lo, nm) => "https://api.adsb.one/v2/point/" + la + "/" + lo + "/" + nm },
+  { id: "alive", label: "airplanes.live", needsKey: true,
+    build: (la, lo, nm) => "https://api.airplanes.live/v2/point/" + la + "/" + lo + "/" + nm },
+  { id: "relaylol", label: "adsb.lol (relay)",
+    build: (la, lo, nm) => "https://api.allorigins.win/raw?url=" + encodeURIComponent("https://api.adsb.lol/v2/point/" + la + "/" + lo + "/" + nm) },
+  { id: "relayfi", label: "adsb.fi (relay)",
+    build: (la, lo, nm) => "https://api.codetabs.com/v1/proxy?quest=" + encodeURIComponent("https://opendata.adsb.fi/api/v2/lat/" + la + "/lon/" + lo + "/dist/" + nm) }
+];
+// Feeds to try this poll, best-first. A user proxy always leads; a pinned feed wins outright.
+function feedList() {
+  const out = [];
+  if (state.proxyUrl) {
+    const base = state.proxyUrl.replace(/\/+$/, "");
+    out.push({ id: "custom", label: "my proxy",
+      build: (la, lo, nm) => base + "/v2/point/" + la + "/" + lo + "/" + nm });
+  }
+  for (const f of FEED_DEFS) { if (f.needsKey && !state.apiKey) continue; out.push(f); }
+  if (state.feed && state.feed !== "auto") {
+    const pinned = out.filter(f => f.id === state.feed);
+    if (pinned.length) return pinned;
+  }
+  return out;
+}
 const KM_PER_MI = 1.60934, MI_PER_KM = 0.621371, KM_PER_NM = 1.852;
 const THEMES = {
   green: { name:"Green", accent:"#36ff8b", dim:"#1f9c54", faint:"rgba(54,255,139,0.18)", rgb:[54,255,139], text:"#b8ffd4", bg:"radial-gradient(circle at 50% 50%, #053a1d 0%, #021c0d 60%, #001206 100%)" },
@@ -309,14 +369,15 @@ const els = {
   canvas: $("radar"), mode: $("st-mode"), count: $("st-count"), range: $("st-range"),
   pos: $("st-pos"), updated: $("st-updated"), next: $("st-next"), rangeSel: $("range"),
   locate: $("locate"), pause: $("pause"), save: $("save"), demo: $("demo"),
-  sound: $("sound"), trailsBtn: $("trails"), ground: $("ground"), track: $("track"), share: $("share"), trackrow: $("trackrow"), themeBtn: $("theme"), soundThemeBtn: $("soundtheme"), source: $("source"), sdrField: $("sdrField"), sdrUrlInput: $("sdrurl"), src: $("st-src"), lat: $("lat"), lon: $("lon"), detail: $("detail")
+  sound: $("sound"), trailsBtn: $("trails"), ground: $("ground"), track: $("track"), share: $("share"), trackrow: $("trackrow"), themeBtn: $("theme"), soundThemeBtn: $("soundtheme"), source: $("source"), sdrField: $("sdrField"), sdrUrlInput: $("sdrurl"), feedSel: $("feed"), feedField: $("feedField"), proxyInput: $("proxyurl"), apiKeyInput: $("apikey"), src: $("st-src"), lat: $("lat"), lon: $("lon"), detail: $("detail")
 };
 const ctx = els.canvas.getContext("2d");
 const state = {
   rangeMi: 60, rangeKm: 60 * KM_PER_MI, origin: null, aircraft: [], selected: null,
   mode: "demo", paused: false, lastFetch: 0, nextFetch: 0, _screen: [],
   soundOn: false, trailsOn: true, _enrichedFor: null, hideGround: true, tracked: null,
-  theme: "green", soundTheme: "sonar", source: "online", sdrUrl: "http://localhost:8080/data/aircraft.json"
+  theme: "green", soundTheme: "sonar", source: "online", sdrUrl: "http://localhost:8080/data/aircraft.json",
+  feed: "auto", activeFeed: null, feedLabel: null, apiKey: "", proxyUrl: ""
 };
 const trails = {};            // icao24 -> [{x,y,t,col}]
 const enrichCache = {};       // icao24 -> {airline,route,photo,credit}
@@ -373,10 +434,13 @@ function loadPrefs() {
     if (p.soundTheme && SOUNDS[p.soundTheme]) state.soundTheme = p.soundTheme;
     if (["sdr","online","usb","hackrf"].includes(p.source)) state.source = p.source;
     if (typeof p.sdrUrl === "string" && p.sdrUrl) state.sdrUrl = p.sdrUrl;
+    if (typeof p.feed === "string" && p.feed) state.feed = p.feed;
+    if (typeof p.apiKey === "string") state.apiKey = p.apiKey;
+    if (typeof p.proxyUrl === "string") state.proxyUrl = p.proxyUrl;
   } catch (e) {}
 }
 function savePrefs() {
-  localStorage.setItem("r4d4rvu", JSON.stringify({ rangeMi: state.rangeMi, origin: state.origin, trailsOn: state.trailsOn, hideGround: state.hideGround, theme: state.theme, soundTheme: state.soundTheme, source: state.source, sdrUrl: state.sdrUrl }));
+  localStorage.setItem("r4d4rvu", JSON.stringify({ rangeMi: state.rangeMi, origin: state.origin, trailsOn: state.trailsOn, hideGround: state.hideGround, theme: state.theme, soundTheme: state.soundTheme, source: state.source, sdrUrl: state.sdrUrl, feed: state.feed, apiKey: state.apiKey, proxyUrl: state.proxyUrl }));
 }
 const R_EARTH = 6371, toRad = d => d * Math.PI / 180, toDeg = r => r * 180 / Math.PI;
 function haversine(a, b) {
@@ -392,25 +456,73 @@ function bearing(a, b) {
 }
 const EMERG = { "7500": "hijack", "7600": "radio fail", "7700": "emergency" };
 const RESP_RE = /^(NPAS|POLICE|POL[0-9]|HEMS|HELIMED|MEDEVAC|MEDIVAC|LIFEGUARD|LIFEGRD|LIFEFLIGHT|COASTGUARD|USCG|CG[0-9]|RESCUE|RESCU|REACH|AIRMED|STARFLIGHT|FIREBIRD|SHERIFF|TROOPER)/;
+// Fetch one feed; resolves to an aircraft array or rejects.
+async function pullFeed(f, la, lo, nm, ms) {
+  const opt = { signal: AbortSignal.timeout(ms), cache: "no-store" };
+  if (f.needsKey && state.apiKey) opt.headers = { "auth": state.apiKey, "api-auth": state.apiKey };
+  const res = await fetch(f.build(la, lo, nm), opt);
+  if (!res.ok) throw new Error(f.label + " " + res.status);
+  const data = await res.json();
+  const arr = data.aircraft || data.ac;
+  if (!Array.isArray(arr)) throw new Error(f.label + " bad data");
+  return { feed: f, rows: arr };
+}
+// Online data: stay on the feed that is working, and when there isn't one,
+// race every candidate at once so the first connect is quick. Returns null
+// (with the scope showing why) only when every source fails.
+async function fetchOnline() {
+  const nm = Math.min(Math.round(state.rangeKm / KM_PER_NM) + 2, 250);
+  const la = state.origin.lat.toFixed(4), lo = state.origin.lon.toFixed(4);
+  const feeds = feedList();
+  if (!feeds.length) { setMode("error", "No feed configured"); return null; }
+
+  // 1. Known-good feed: use it directly.
+  const cur = feeds.find(f => f.id === state.activeFeed);
+  if (cur) {
+    try {
+      const r = await pullFeed(cur, la, lo, nm, 9000);
+      state.feedLabel = cur.label;
+      return r.rows;
+    } catch (e) {
+      console.warn("[R4D4RVU] feed " + cur.label + " dropped out:", e.message || e);
+      state.activeFeed = null; state.feedLabel = null;
+    }
+  }
+
+  // 2. No feed yet — race them all and keep the first that answers.
+  const errs = [];
+  const attempts = feeds.map(f => pullFeed(f, la, lo, nm, 8000).catch(e => {
+    errs.push((e && e.name) === "TimeoutError" ? (f.label + " timeout") : ((e && e.message) || (f.label + " blocked")));
+    throw e;
+  }));
+  let win = null;
+  try { win = await Promise.any(attempts); } catch (e) { win = null; }
+  if (win) {
+    console.info("[R4D4RVU] feed:", win.feed.label);
+    state.activeFeed = win.feed.id; state.feedLabel = win.feed.label;
+    return win.rows;
+  }
+  console.warn("[R4D4RVU] every online feed failed:", errs.join(", "));
+  setMode("error", "No feed \u2014 all " + feeds.length + " sources blocked");
+  return null;
+}
 async function fetchAircraft() {
   if (!state.origin) return;
   let rows;
   if (state.source === "usb" || state.source === "hackrf") {
     rows = (window.R4SDR && window.R4SDR.supported) ? window.R4SDR.getAircraft() : [];
   } else {
-    let url;
     if (state.source === "sdr") {
-      url = state.sdrUrl;
+      let res;
+      try { res = await fetch(state.sdrUrl, { signal: AbortSignal.timeout(10000) }); }
+      catch (e) { setMode("error", "SDR unreachable"); return; }
+      if (!res.ok) { setMode("error", "Data " + res.status); return; }
+      let data; try { data = await res.json(); } catch (e) { setMode("error", "Bad data"); return; }
+      rows = data.aircraft || data.ac || [];
     } else {
-      const nm = Math.min(Math.round(state.rangeKm / KM_PER_NM) + 2, 250);
-      url = CFG.dataUrl + state.origin.lat.toFixed(4) + "/" + state.origin.lon.toFixed(4) + "/" + nm;
+      rows = await fetchOnline();
+      if (rows === null) return;   // fetchOnline already set the error state
     }
-    let res;
-    try { res = await fetch(url, { signal: AbortSignal.timeout(10000) }); }
-    catch (e) { setMode("error", state.source === "sdr" ? "SDR unreachable" : "Network error"); return; }
-    if (!res.ok) { setMode("error", "Data " + res.status); return; }
-    let data; try { data = await res.json(); } catch (e) { setMode("error", "Bad data"); return; }
-    rows = data.aircraft || data.ac || [];
   }
   const now = Date.now();
   const prevById = new Map(state.aircraft.map(a => [a.icao24, a]));
@@ -541,7 +653,7 @@ function updateReadout() {
   els.count.textContent = _v.length + (state.hideGround && _g ? " (+" + _g + " gnd)" : "");
   els.range.textContent = state.rangeMi + " mi";
   els.pos.textContent = state.origin ? state.origin.lat.toFixed(3) + ", " + state.origin.lon.toFixed(3) : "—";
-  if (els.src) els.src.textContent = state.source === "usb" ? "RTL-SDR (USB)" : (state.source === "hackrf" ? "HackRF (USB)" : (state.source === "sdr" ? "Local SDR" : "airplanes.live"));
+  if (els.src) els.src.textContent = state.source === "usb" ? "RTL-SDR (USB)" : (state.source === "hackrf" ? "HackRF (USB)" : (state.source === "sdr" ? "Local SDR" : (state.feedLabel || "online \u2014 connecting\u2026")));
   els.updated.textContent = state.lastFetch ? new Date(state.lastFetch).toLocaleTimeString() : "—";
   updateStats();
   if (state.tracked) state.selected = state.tracked;
@@ -917,6 +1029,7 @@ els.source.addEventListener("change", async () => {
   state.source = els.source.value;
   const isUsb = (state.source === "usb" || state.source === "hackrf");
   els.sdrField.style.display = state.source === "sdr" ? "block" : "none";
+  if (els.feedField) els.feedField.style.display = state.source === "online" ? "block" : "none";
   const uh = document.getElementById("usbHint"); if (uh) uh.style.display = isUsb ? "block" : "none";
   const rxp = document.getElementById("rxPanel"); if (rxp) rxp.style.display = isUsb ? "block" : "none";
   const gnb = document.getElementById("gainBox"); if (gnb) gnb.style.display = (state.source === "hackrf") ? "block" : "none";
@@ -955,6 +1068,18 @@ els.source.addEventListener("change", async () => {
     rx.textContent = "RX health: " + rate.toFixed(0) + " msgs/s · " + st.positioned + " with position · " + st.tracked + " tracked";
   }, 1000);
 })();
+if (els.feedSel) els.feedSel.addEventListener("change", () => {
+  state.feed = els.feedSel.value; state.activeFeed = null; state.feedLabel = null;
+  savePrefs(); if (state.source === "online" && state.origin) tick(true);
+});
+if (els.proxyInput) els.proxyInput.addEventListener("change", () => {
+  state.proxyUrl = els.proxyInput.value.trim(); state.activeFeed = null; state.feedLabel = null;
+  savePrefs(); if (state.source === "online" && state.origin) tick(true);
+});
+if (els.apiKeyInput) els.apiKeyInput.addEventListener("change", () => {
+  state.apiKey = els.apiKeyInput.value.trim(); state.activeFeed = null; state.feedLabel = null;
+  savePrefs(); if (state.source === "online" && state.origin) tick(true);
+});
 els.sdrUrlInput.addEventListener("change", () => {
   if (els.sdrUrlInput.value.trim()) state.sdrUrl = els.sdrUrlInput.value.trim();
   savePrefs();
@@ -999,7 +1124,11 @@ function boot() {
   applyTheme(state.theme);
   els.source.value = state.source;
   els.sdrUrlInput.value = state.sdrUrl;
+  if (els.feedSel) els.feedSel.value = state.feed;
+  if (els.proxyInput) els.proxyInput.value = state.proxyUrl;
+  if (els.apiKeyInput) els.apiKeyInput.value = state.apiKey;
   els.sdrField.style.display = state.source === "sdr" ? "block" : "none";
+  if (els.feedField) els.feedField.style.display = state.source === "online" ? "block" : "none";
   els.trailsBtn.textContent = "✦ Trails: " + (state.trailsOn ? "on" : "off");
   els.ground.textContent = "🛬 Ground: " + (state.hideGround ? "hidden" : "shown");
   els.ground.classList.toggle("active", state.hideGround);
