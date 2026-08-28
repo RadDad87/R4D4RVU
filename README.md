@@ -16,7 +16,8 @@ R4D4RVU centers a vintage CRT-style radar scope on your location and plots every
 
 - **Authentic radar scope** — circular display, range rings, compass spokes, N/E/S/W cardinals, and a sweeping hand with a phosphor-style fading trail.
 - **Your location, your sky** — uses the browser Geolocation API to center on you, or set coordinates manually.
-- **Three data sources** — live [airplanes.live](https://airplanes.live) (no key), a **local SDR** feed (`dump1090-fa`/`readsb`) for fully offline use, or an **RTL-SDR or HackRF One plugged straight into the browser** over WebUSB.
+- **Self-healing online feed** — the radar probes several community ADS-B networks ([adsb.lol](https://adsb.lol), [adsb.fi](https://adsb.fi), [adsb.one](https://adsb.one), public relays, or your own proxy) and keeps whichever one your browser can actually reach, so one provider going away no longer takes the scope down.
+- **Three data sources** — the online community feed above, a **local SDR** feed (`dump1090-fa`/`readsb`) for fully offline use, or an **RTL-SDR or HackRF One plugged straight into the browser** over WebUSB.
 - **Type-specific symbols** — winged jets, light triangles, helicopter rotors, drone diamonds, glider darts, and ground squares (from the ADS-B emitter category).
 - **Altitude colours** — blips coloured by band (ground · <10k · 10–20k · 20–30k · 30k+) with a legend.
 - **Threat & responder highlighting** — emergency squawks (7500/7600/7700) flash **pink**; **military, police, coast guard, fire, and medical** aircraft are **bright red** with a ring; **government / customs / border** are **purple**. Classification uses the ADS-B military flag plus the registered operator (via adsbdb) and an anchored-callsign pass.
@@ -53,12 +54,38 @@ Open **⚙ Set location manually / options → Data source**:
 
 | Source | What it does |
 | --- | --- |
-| **Online — airplanes.live** | Default. Free community ADS-B over the internet, no key. |
+| **Online — community ADS-B** | Default. Free community ADS-B over the internet, no key. Auto-selects the first reachable feed (adsb.lol → adsb.fi → adsb.one → public relays), or your own proxy if you set one. |
 | **Local SDR (offline)** | Reads a local `dump1090-fa`/`readsb` `aircraft.json` — fully offline. |
 | **RTL-SDR (USB) — in browser** | Decodes a plugged-in RTL-SDR **in the browser** over WebUSB (Chrome/Edge desktop, experimental). |
 | **HackRF One (USB) — in browser** | Tunes & decodes a plugged-in **HackRF One in the browser** over WebUSB (Chrome/Edge desktop). **Experimental & unverified** — may need gain tuning; if no contacts appear, use Local SDR mode instead. |
 
-R4D4RVU originally targeted the OpenSky Network, but OpenSky's data endpoint only sends CORS headers for its own site, so no static page can read it. airplanes.live allows direct browser requests, which is why it's the default.
+### Why the feed list exists
+
+R4D4RVU originally targeted the OpenSky Network, but OpenSky's data endpoint only sends CORS headers for its own site, so no static page can read it. airplanes.live did allow direct browser requests, which is why it used to be the default — until **airplanes.live closed its free public API**: `api.airplanes.live/v2/...` now returns
+
+```
+HTTP 403  {"error": "Please contact us at contact@airplanes.live..."}
+```
+
+for anyone who isn't a feeder or key holder. A single hard-coded endpoint is a single point of failure, so the radar now keeps a list and uses the first feed that answers *from your browser*:
+
+1. **Your own proxy**, if you set one (best — see below)
+2. `api.adsb.lol` · `opendata.adsb.fi` · `api.adsb.one` — direct
+3. `api.airplanes.live` — only if you paste an API key in ⚙ options
+4. Public CORS relays in front of adsb.lol / adsb.fi — last resort, shared rate limits
+
+The active feed is shown as **Source** in the STATUS panel. If every source fails, the scope now says so (`ERR · No feed`) instead of going quiet.
+
+### Give yourself a private feed (recommended)
+
+Community feeds don't all send `Access-Control-Allow-Origin`, and public relays are throttled. The repo ships **[`cors-proxy-worker.js`](cors-proxy-worker.js)** — a free Cloudflare Worker that fronts adsb.lol / adsb.fi / adsb.one and adds the CORS header:
+
+1. dash.cloudflare.com → **Workers & Pages → Create → Worker**
+2. Paste `cors-proxy-worker.js` over the template → **Deploy**
+3. Copy the `*.workers.dev` URL
+4. In R4D4RVU: **⚙ options → My CORS proxy** → paste → the radar reconnects immediately
+
+Or: `npx wrangler deploy cors-proxy-worker.js --name radar-feed --compatibility-date 2026-01-01`
 
 **Turn your dongle into a radar in one command** — the repo ships a Docker stack (readsb + a same-origin web server) and double-click launchers:
 
@@ -115,7 +142,6 @@ Near the top of the `<script>` in `index.html`:
 
 ```js
 const CFG = {
-  dataUrl: "https://api.airplanes.live/v2/point/",
   refreshMs: 12000,      // online refresh interval
   sweepPeriodMs: 4000,   // one sweep revolution
   trailFade: 25,         // miles before a trail starts fading
@@ -154,7 +180,7 @@ Positions are approximate, can be delayed, and depend on community ADS-B coverag
 
 ## 🙏 Credits
 
-Live data © [airplanes.live](https://airplanes.live) contributors · routes/owners via [adsbdb](https://www.adsbdb.com) · photos via [planespotters.net](https://www.planespotters.net) · in-browser SDR uses [rtlsdrjs](https://github.com/sandeepmistry/rtlsdrjs) (Apache-2.0) and [mode-s-demodulator](https://github.com/watson/mode-s-demodulator) (MIT); the experimental HackRF WebUSB paths follow the [libhackrf](https://github.com/greatscottgadgets/hackrf) / [hackrf.js](https://github.com/mildsunrise/hackrf.js) (MIT) protocol; airband frequencies via [OurAirports](https://ourairports.com).
+Live data © the community ADS-B networks ([adsb.lol](https://adsb.lol), [adsb.fi](https://adsb.fi), [adsb.one](https://adsb.one)) and their contributors · routes/owners via [adsbdb](https://www.adsbdb.com) · photos via [planespotters.net](https://www.planespotters.net) · in-browser SDR uses [rtlsdrjs](https://github.com/sandeepmistry/rtlsdrjs) (Apache-2.0) and [mode-s-demodulator](https://github.com/watson/mode-s-demodulator) (MIT); the experimental HackRF WebUSB paths follow the [libhackrf](https://github.com/greatscottgadgets/hackrf) / [hackrf.js](https://github.com/mildsunrise/hackrf.js) (MIT) protocol; airband frequencies via [OurAirports](https://ourairports.com).
 
 ## 📄 License
 
