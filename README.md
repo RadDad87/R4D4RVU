@@ -69,7 +69,7 @@ HTTP 403  {"error": "Please contact us at contact@airplanes.live..."}
 
 for anyone who isn't a feeder or key holder. A single hard-coded endpoint is a single point of failure, so the radar now keeps a list and uses the first feed that answers *from your browser*:
 
-1. **Your own proxy**, if you set one (best — see below)
+1. **Your own proxy**, if you set one — the only reliable option (see below)
 2. `api.adsb.lol` · `opendata.adsb.fi` · `api.adsb.one` — direct
 3. `api.airplanes.live` — only if you paste an API key in ⚙ options
 4. Public CORS relays in front of adsb.lol / adsb.fi — last resort, shared rate limits
@@ -78,15 +78,34 @@ The active feed is shown as **Source** in the STATUS panel. If every source fail
 
 ### Give yourself a private feed (recommended)
 
-Community feeds don't all send `Access-Control-Allow-Origin`, and public relays are throttled. The repo ships **[`cors-proxy-worker.js`](cors-proxy-worker.js)** — a free Cloudflare Worker that fronts adsb.lol / adsb.fi / adsb.one and adds the CORS header:
+The community feeds don't all send `Access-Control-Allow-Origin`, and the public CORS relays are throttled or gone, so a proxy you control is the only reliable path.
 
-1. dash.cloudflare.com → **Workers & Pages → Create → Worker**
-2. Paste `cors-proxy-worker.js` over the template → **Deploy**
-3. Copy the `*.workers.dev` URL
-4. In R4D4RVU: **⚙ options → My CORS proxy** → paste → the radar reconnects immediately
+**Don't use a Cloudflare Worker for this.** The repo shipped [`cors-proxy-worker.js`](cors-proxy-worker.js) for exactly this job and it does not work — measured from a deployed Worker, not guessed:
 
-Or: `npx wrangler deploy cors-proxy-worker.js --name radar-feed --compatibility-date 2026-01-01`
+```
+api.adsb.lol         429   rate-limited (Workers egress from a shared, saturated IP pool)
+opendata.adsb.fi     403   sits behind Cloudflare; Worker-to-Cloudflare is refused
+api.adsb.one         403   same
+opensky-network.org  522   same
+```
 
+The identical requests from an ordinary machine all return 200. The Worker file is kept for reference in case those providers change their minds.
+
+**What works: [`local-feed-proxy.js`](local-feed-proxy.js)** — a dependency-free Node server that runs on your own machine, so the outbound request carries your own IP:
+
+```bash
+node local-feed-proxy.js       # listens on http://127.0.0.1:8787
+```
+
+If you serve the radar locally, point **⚙ options → My CORS proxy** straight at `http://127.0.0.1:8787`. To use it with the hosted GitHub Pages build, an https page cannot read http://localhost (mixed content), so put a tunnel in front:
+
+```bash
+cloudflared tunnel --url http://127.0.0.1:8787    # free, no account, prints a *.trycloudflare.com URL
+```
+
+Paste that URL into **⚙ options → My CORS proxy**. A quick tunnel's hostname changes on every restart; `cloudflared tunnel login` plus a named tunnel gives you a permanent one on your own domain.
+
+The proxy tries adsb.lol → adsb.fi → adsb.one, normalises both response shapes, caches for 5 s, and answers with `Access-Control-Allow-Origin: *`.
 **Turn your dongle into a radar in one command** — the repo ships a Docker stack (readsb + a same-origin web server) and double-click launchers:
 
 ```bash

@@ -1,3 +1,10 @@
+/* DOES NOT WORK AS OF 2026-09 - kept for reference only.
+ * Deployed and measured: from a Cloudflare Worker these upstreams answer
+ *   api.adsb.lol 429 / opendata.adsb.fi 403 / api.adsb.one 403 / opensky 522
+ * Three of them sit behind Cloudflare (Worker-to-Cloudflare is refused) and
+ * adsb.lol rate-limits the shared Workers egress pool. The same requests from
+ * an ordinary machine return 200. Use local-feed-proxy.js instead.
+ */
 /**
  * R4D4RVU feed proxy — a free Cloudflare Worker that gives the radar a
  * private, CORS-enabled ADS-B feed.
