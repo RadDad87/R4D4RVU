@@ -103,7 +103,26 @@ If you serve the radar locally, point **⚙ options → My CORS proxy** straight
 cloudflared tunnel --url http://127.0.0.1:8787    # free, no account, prints a *.trycloudflare.com URL
 ```
 
-Paste that URL into **⚙ options → My CORS proxy**. A quick tunnel's hostname changes on every restart; `cloudflared tunnel login` plus a named tunnel gives you a permanent one on your own domain.
+Paste that URL into **⚙ options → My CORS proxy**. A quick tunnel's hostname changes on every restart. For a permanent address on your own domain:
+
+```bash
+cloudflared tunnel login                                   # one click in the browser
+cloudflared tunnel create radar-feed
+cloudflared tunnel route dns radar-feed radar.example.com  # adds the CNAME for you
+```
+
+Then put this in `~/.cloudflared/config.yml` and run `cloudflared tunnel run radar-feed`:
+
+```yaml
+tunnel: <tunnel-id>
+credentials-file: <path printed by "tunnel create">
+ingress:
+  - hostname: radar.example.com
+    service: http://127.0.0.1:8787
+  - service: http_status:404
+```
+
+Set that hostname once in ⚙ options and you never touch it again. Start the proxy and the tunnel together at logon (a Task Scheduler task on Windows, a launchd/systemd unit elsewhere) so it comes back after a reboot.
 
 The proxy tries adsb.lol → adsb.fi → adsb.one, normalises both response shapes, caches for 5 s, and answers with `Access-Control-Allow-Origin: *`.
 **Turn your dongle into a radar in one command** — the repo ships a Docker stack (readsb + a same-origin web server) and double-click launchers:
