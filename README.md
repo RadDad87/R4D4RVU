@@ -80,7 +80,7 @@ The active feed is shown as **Source** in the STATUS panel. If every source fail
 
 The community feeds don't all send `Access-Control-Allow-Origin`, and the public CORS relays are throttled or gone, so a proxy you control is the only reliable path.
 
-**Don't use a Cloudflare Worker for this.** The repo shipped [`cors-proxy-worker.js`](cors-proxy-worker.js) for exactly this job and it does not work — measured from a deployed Worker, not guessed:
+**A Cloudflare Worker cannot do this job.** That was the obvious approach and it was tried — measured from a deployed Worker, not guessed:
 
 ```
 api.adsb.lol         429   rate-limited (Workers egress from a shared, saturated IP pool)
@@ -89,7 +89,7 @@ api.adsb.one         403   same
 opensky-network.org  522   same
 ```
 
-The identical requests from an ordinary machine all return 200. The Worker file is kept for reference in case those providers change their minds.
+The identical requests from an ordinary machine all return 200. The host was wrong, not the code, so the Worker version has been removed rather than left around to mislead.
 
 **What works: [`local-feed-proxy.js`](local-feed-proxy.js)** — a dependency-free Node server that runs on your own machine, so the outbound request carries your own IP:
 

@@ -251,7 +251,7 @@
             </select>
             <p class="hint">airplanes.live closed its free API in 2026, so the radar now probes several community feeds. Leave this on <b>Auto</b> unless you want to pin one.</p>
             <label for="proxyurl">My CORS proxy (optional, most reliable)</label>
-            <input id="proxyurl" type="text" autocomplete="off" placeholder="https://radar-feed.yourname.workers.dev" />
+            <input id="proxyurl" type="text" autocomplete="off" placeholder="https://your-tunnel.example.com" />
             <p class="hint">Run <code>local-feed-proxy.js</code> from the repo on your own machine and put an HTTPS tunnel in front of it, then paste that URL here. The radar appends <code>/v2/point/lat/lon/nm</code>. If the proxy publishes a <code>feed-url.json</code> next to this page, the radar picks it up automatically and you can leave this blank.</p>
             <label for="apikey">airplanes.live API key (optional)</label>
             <input id="apikey" type="text" autocomplete="off" placeholder="paste key if you feed airplanes.live" />
