@@ -221,6 +221,9 @@
           <button id="ground" class="ghost active">🛬 Ground: hidden</button>
         </div>
         <div class="row" style="margin-bottom:10px;">
+          <button id="map" class="ghost active">🗺 Map: on</button>
+        </div>
+        <div class="row" style="margin-bottom:10px;">
           <button id="theme" class="ghost">🎨 Green</button>
         </div>
         <div class="row" style="margin-bottom:10px;">
@@ -290,7 +293,7 @@
       </div>
     </div>
   </div>
-  <footer>Live data &copy; the community ADS-B networks (<a href="https://adsb.lol" target="_blank" rel="noopener">adsb.lol</a>, <a href="https://adsb.fi" target="_blank" rel="noopener">adsb.fi</a>, <a href="https://adsb.one" target="_blank" rel="noopener">adsb.one</a>) and their contributors. Positions are approximate and for hobby/educational use only — not for navigation.</footer>
+  <footer>Live data &copy; the community ADS-B networks (<a href="https://adsb.lol" target="_blank" rel="noopener">adsb.lol</a>, <a href="https://adsb.fi" target="_blank" rel="noopener">adsb.fi</a>, <a href="https://adsb.one" target="_blank" rel="noopener">adsb.one</a>) and their contributors. Basemap © <a href="https://www.esri.com" target="_blank" rel="noopener">Esri</a>, HERE, Garmin, © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors. Aircraft photos © airport-data.com. Positions are approximate and for hobby/educational use only — not for navigation.</footer>
 <script>
 "use strict";
 const CFG = { refreshMs: 12000, sweepPeriodMs: 4000, trailFade: 25, trailMax: 32, goneMs: 20000 };
@@ -377,14 +380,14 @@ const els = {
   canvas: $("radar"), mode: $("st-mode"), count: $("st-count"), range: $("st-range"),
   pos: $("st-pos"), updated: $("st-updated"), next: $("st-next"), rangeSel: $("range"),
   locate: $("locate"), pause: $("pause"), save: $("save"), demo: $("demo"),
-  sound: $("sound"), trailsBtn: $("trails"), ground: $("ground"), track: $("track"), share: $("share"), trackrow: $("trackrow"), themeBtn: $("theme"), soundThemeBtn: $("soundtheme"), source: $("source"), sdrField: $("sdrField"), sdrUrlInput: $("sdrurl"), feedSel: $("feed"), feedField: $("feedField"), proxyInput: $("proxyurl"), proxyKeyInput: $("proxykey"), apiKeyInput: $("apikey"), src: $("st-src"), lat: $("lat"), lon: $("lon"), detail: $("detail")
+  sound: $("sound"), trailsBtn: $("trails"), ground: $("ground"), track: $("track"), share: $("share"), trackrow: $("trackrow"), themeBtn: $("theme"), mapBtn: $("map"), soundThemeBtn: $("soundtheme"), source: $("source"), sdrField: $("sdrField"), sdrUrlInput: $("sdrurl"), feedSel: $("feed"), feedField: $("feedField"), proxyInput: $("proxyurl"), proxyKeyInput: $("proxykey"), apiKeyInput: $("apikey"), src: $("st-src"), lat: $("lat"), lon: $("lon"), detail: $("detail")
 };
 const ctx = els.canvas.getContext("2d");
 const state = {
   rangeMi: 60, rangeKm: 60 * KM_PER_MI, origin: null, aircraft: [], selected: null,
   mode: "demo", paused: false, lastFetch: 0, nextFetch: 0, _screen: [],
   soundOn: false, trailsOn: true, _enrichedFor: null, hideGround: true, tracked: null,
-  theme: "green", soundTheme: "sonar", source: "online", sdrUrl: "http://localhost:8080/data/aircraft.json",
+  theme: "green", soundTheme: "sonar", mapOn: true, source: "online", sdrUrl: "http://localhost:8080/data/aircraft.json",
   feed: "auto", activeFeed: null, feedLabel: null, apiKey: "", proxyUrl: "", proxyKey: "", autoProxy: null
 };
 const trails = {};            // icao24 -> [{x,y,t,col}]
@@ -438,6 +441,7 @@ function loadPrefs() {
     if (p.origin) { state.origin = p.origin; els.lat.value = p.origin.lat; els.lon.value = p.origin.lon; }
     if (typeof p.trailsOn === "boolean") state.trailsOn = p.trailsOn;
     if (typeof p.hideGround === "boolean") state.hideGround = p.hideGround;
+    if (typeof p.mapOn === "boolean") state.mapOn = p.mapOn;
     if (p.theme && THEMES[p.theme]) state.theme = p.theme;
     if (p.soundTheme && SOUNDS[p.soundTheme]) state.soundTheme = p.soundTheme;
     if (["sdr","online","usb","hackrf"].includes(p.source)) state.source = p.source;
@@ -449,7 +453,7 @@ function loadPrefs() {
   } catch (e) {}
 }
 function savePrefs() {
-  localStorage.setItem("r4d4rvu", JSON.stringify({ rangeMi: state.rangeMi, origin: state.origin, trailsOn: state.trailsOn, hideGround: state.hideGround, theme: state.theme, soundTheme: state.soundTheme, source: state.source, sdrUrl: state.sdrUrl, feed: state.feed, apiKey: state.apiKey, proxyUrl: state.proxyUrl, proxyKey: state.proxyKey }));
+  localStorage.setItem("r4d4rvu", JSON.stringify({ rangeMi: state.rangeMi, origin: state.origin, trailsOn: state.trailsOn, hideGround: state.hideGround, mapOn: state.mapOn, theme: state.theme, soundTheme: state.soundTheme, source: state.source, sdrUrl: state.sdrUrl, feed: state.feed, apiKey: state.apiKey, proxyUrl: state.proxyUrl, proxyKey: state.proxyKey }));
 }
 const R_EARTH = 6371, toRad = d => d * Math.PI / 180, toDeg = r => r * 180 / Math.PI;
 function haversine(a, b) {
@@ -722,7 +726,12 @@ async function enrichSelected(a) {
   const jobs = [];
   jobs.push(fetch("https://api.adsbdb.com/v0/aircraft/" + a.icao24, { signal: AbortSignal.timeout(8000) }).then(r=>r.json()).then(j=>{
     const ac = j.response && j.response.aircraft;
-    if (ac && ac.registered_owner) c.airline = ac.registered_owner;
+    if (!ac) return;
+    if (ac.registered_owner) c.airline = ac.registered_owner;
+    // Real photograph of this airframe. adsbdb carries the airport-data.com
+    // image for most registered aircraft, so no second lookup is needed.
+    const photo = ac.url_photo || ac.url_photo_thumbnail;
+    if (photo) { c.photo = photo; c.credit = "photo © airport-data.com"; }
   }).catch(()=>{}));
   if (cs && cs !== "------") {
     jobs.push(fetch("https://api.adsbdb.com/v0/callsign/" + encodeURIComponent(cs), { signal: AbortSignal.timeout(8000) }).then(r=>r.json()).then(j=>{
@@ -735,10 +744,6 @@ async function enrichSelected(a) {
       }
     }).catch(()=>{}));
   }
-  jobs.push(fetch("https://api.planespotters.net/pubapi/v1/hex/" + a.icao24, { signal: AbortSignal.timeout(8000) }).then(r=>r.json()).then(j=>{
-    const ph = j.photos && j.photos[0];
-    if (ph) { c.photo = (ph.thumbnail_large ? ph.thumbnail_large.src : ph.thumbnail.src); c.credit = "photo © " + (ph.photographer || "?") + " / planespotters.net"; }
-  }).catch(()=>{}));
   await Promise.all(jobs);
   if (c.airline === "…") c.airline = "—";
   if (c.route === "…") c.route = "—";
@@ -749,12 +754,102 @@ const SIZE = 1040, C = SIZE / 2, RR = SIZE / 2 - 40;
 const SMALL = Math.min(window.innerWidth, window.innerHeight) < 640;
 const HIT = (window.matchMedia && matchMedia("(pointer: coarse)").matches) ? 85 : 55;
 let sweepAngle = 0, lastFrame = performance.now();
+/* ---- Basemap underlay ----------------------------------------------------
+   Raster tiles (CARTO dark_nolabels, OpenStreetMap data) drawn beneath the
+   scope. Each tile is positioned by the latitude/longitude of its own corners
+   in a local east-north frame, so Mercator's latitude stretch is corrected
+   per tile rather than smeared across the whole picture: the coastline under
+   a blip sits where the blip says it is. The mosaic is rendered once per
+   location / range / theme change into an offscreen canvas and composited
+   each frame, so the animation cost is one drawImage. */
+const MAP = { cvs: document.createElement("canvas"), mask: document.createElement("canvas"), key: "", tiles: new Map(), dirty: true };
+MAP.cvs.width = MAP.mask.width = SIZE; MAP.cvs.height = MAP.mask.height = SIZE;
+// Esri's dark canvas basemap: no API key, CORS-enabled, and dark enough to sit
+// under a phosphor scope. Note the tile path is /z/row/col, not /z/x/y.
+const tileUrl = (z, x, y) => "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/" + z + "/" + y + "/" + x;
+const tileLat = (y, n) => Math.atan(Math.sinh(Math.PI * (1 - (2 * y) / n))) * 180 / Math.PI;
+function mapZoom(lat) {
+  const mPerPx = (state.rangeKm * 1000) / RR;          // metres per scope pixel
+  const z = Math.round(Math.log2((156543.03392 * Math.cos(toRad(lat))) / mPerPx));
+  return Math.max(3, Math.min(12, z));
+}
+function renderMap() {
+  const o = state.origin; if (!o) return;
+  // Clear the flag first: tiles that finish loading while this runs must be
+  // able to mark the mosaic dirty again, or their squares stay blank.
+  MAP.dirty = false;
+  const g = MAP.cvs.getContext("2d");
+  g.clearRect(0, 0, SIZE, SIZE);
+  const mk = MAP.mask.getContext("2d");
+  mk.clearRect(0, 0, SIZE, SIZE);
+  let drawn = 0;
+  const z = mapZoom(o.lat), n = Math.pow(2, z);
+  const kmLat = 111.32, kmLon = 111.32 * Math.cos(toRad(o.lat));
+  const pxPerKm = RR / state.rangeKm;
+  const X = lon => C + (lon - o.lon) * kmLon * pxPerKm;
+  const Y = lat => C - (lat - o.lat) * kmLat * pxPerKm;
+  const dLat = (state.rangeKm / kmLat) * 1.15, dLon = (state.rangeKm / kmLon) * 1.15;
+  const lon2tx = lon => Math.floor(((lon + 180) / 360) * n);
+  const lat2ty = lat => { const r = toRad(lat); return Math.floor(((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2) * n); };
+  // Lift the grey slightly so coastline and roads survive the tint.
+  g.filter = "brightness(0.85) contrast(1.2)";
+  const x0 = lon2tx(o.lon - dLon), x1 = lon2tx(o.lon + dLon);
+  const y0 = lat2ty(Math.min(85, o.lat + dLat)), y1 = lat2ty(Math.max(-85, o.lat - dLat));
+  for (let x = x0; x <= x1; x++) {
+    for (let y = y0; y <= y1; y++) {
+      if (y < 0 || y >= n) continue;
+      const tx = ((x % n) + n) % n, k = z + "/" + tx + "/" + y;
+      let img = MAP.tiles.get(k);
+      if (!img) {
+        img = new Image(); img.crossOrigin = "anonymous";
+        img.onload = () => { MAP.dirty = true; };
+        img.onerror = () => { img.failed = true; };
+        img.src = tileUrl(z, tx, y);
+        MAP.tiles.set(k, img);
+        if (MAP.tiles.size > 300) MAP.tiles.delete(MAP.tiles.keys().next().value);
+      }
+      if (img.failed || !img.complete || !img.naturalWidth) continue;
+      const lonA = (x / n) * 360 - 180, lonB = ((x + 1) / n) * 360 - 180;
+      const px = X(lonA), py = Y(tileLat(y, n));
+      const pw = X(lonB) - px + 1, ph = Y(tileLat(y + 1, n)) - py + 1;
+      g.drawImage(img, px, py, pw, ph);
+      mk.drawImage(img, px, py, pw, ph);
+      drawn++;
+    }
+  }
+  g.filter = "none";
+  if (!drawn) return;
+  g.globalCompositeOperation = "multiply";  // tint the land to the active tube, keeping its luminance
+  g.fillStyle = acc(1);
+  g.fillRect(0, 0, SIZE, SIZE);
+  // The tint above covers the whole square; clip it back to the union of the
+  // tiles that actually drew, so a half-loaded mosaic shows gaps rather than
+  // flat colour. One masked composite - applying destination-in per tile would
+  // intersect them and erase everything.
+  g.globalCompositeOperation = "destination-in";
+  g.drawImage(MAP.mask, 0, 0);
+  g.globalCompositeOperation = "source-over";
+}
+function drawMap() {
+  if (!state.mapOn || !state.origin) return;
+  const key = state.origin.lat.toFixed(4) + "," + state.origin.lon.toFixed(4) + "," + state.rangeKm.toFixed(1) + "," + state.theme;
+  if (key !== MAP.key) { MAP.key = key; MAP.dirty = true; }
+  if (MAP.dirty) renderMap();
+  ctx.save();
+  ctx.beginPath(); ctx.arc(C, C, RR, 0, Math.PI * 2); ctx.clip();
+  // Painted under everything at low weight: land reads as dim phosphor, water
+  // and the coastline stay black, and the rings and blips keep their contrast.
+  ctx.globalAlpha = 0.42;
+  ctx.drawImage(MAP.cvs, 0, 0);
+  ctx.restore();
+}
 function planeXY(a) {
   const f = Math.min(a.dist / state.rangeKm, 1);
   return { x: C + Math.sin(toRad(a.brg)) * f * RR, y: C - Math.cos(toRad(a.brg)) * f * RR };
 }
 function drawGrid() {
   ctx.clearRect(0, 0, SIZE, SIZE);
+  drawMap();
   ctx.lineWidth = 1.5;
   for (let i = 1; i <= 4; i++) {
     ctx.strokeStyle = acc(0.22);
@@ -1093,6 +1188,12 @@ if (els.apiKeyInput) els.apiKeyInput.addEventListener("change", () => {
   state.apiKey = els.apiKeyInput.value.trim(); state.activeFeed = null; state.feedLabel = null;
   savePrefs(); if (state.source === "online" && state.origin) tick(true);
 });
+if (els.mapBtn) els.mapBtn.addEventListener("click", () => {
+  state.mapOn = !state.mapOn;
+  els.mapBtn.textContent = "🗺 Map: " + (state.mapOn ? "on" : "off");
+  els.mapBtn.classList.toggle("active", state.mapOn);
+  savePrefs();
+});
 els.sdrUrlInput.addEventListener("change", () => {
   if (els.sdrUrlInput.value.trim()) state.sdrUrl = els.sdrUrlInput.value.trim();
   savePrefs();
@@ -1143,6 +1244,7 @@ function boot() {
   if (els.apiKeyInput) els.apiKeyInput.value = state.apiKey;
   els.sdrField.style.display = state.source === "sdr" ? "block" : "none";
   if (els.feedField) els.feedField.style.display = state.source === "online" ? "block" : "none";
+  if (els.mapBtn) { els.mapBtn.textContent = "🗺 Map: " + (state.mapOn ? "on" : "off"); els.mapBtn.classList.toggle("active", state.mapOn); }
   els.trailsBtn.textContent = "✦ Trails: " + (state.trailsOn ? "on" : "off");
   els.ground.textContent = "🛬 Ground: " + (state.hideGround ? "hidden" : "shown");
   els.ground.classList.toggle("active", state.hideGround);
