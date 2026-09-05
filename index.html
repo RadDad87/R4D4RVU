@@ -252,7 +252,7 @@
             <p class="hint">airplanes.live closed its free API in 2026, so the radar now probes several community feeds. Leave this on <b>Auto</b> unless you want to pin one.</p>
             <label for="proxyurl">My CORS proxy (optional, most reliable)</label>
             <input id="proxyurl" type="text" autocomplete="off" placeholder="https://radar-feed.yourname.workers.dev" />
-            <p class="hint">Deploy <code>cors-proxy-worker.js</code> from the repo to a free Cloudflare Worker and paste its URL here for a private feed that never rate-limits. The radar appends <code>/v2/point/lat/lon/nm</code>.</p>
+            <p class="hint">Run <code>local-feed-proxy.js</code> from the repo on your own machine and put an HTTPS tunnel in front of it, then paste that URL here. The radar appends <code>/v2/point/lat/lon/nm</code>. If the proxy publishes a <code>feed-url.json</code> next to this page, the radar picks it up automatically and you can leave this blank.</p>
             <label for="apikey">airplanes.live API key (optional)</label>
             <input id="apikey" type="text" autocomplete="off" placeholder="paste key if you feed airplanes.live" />
           </div>
@@ -320,8 +320,9 @@ const FEED_DEFS = [
 // Feeds to try this poll, best-first. A user proxy always leads; a pinned feed wins outright.
 function feedList() {
   const out = [];
-  if (state.proxyUrl) {
-    const base = state.proxyUrl.replace(/\/+$/, "");
+  const px = state.proxyUrl || state.autoProxy;
+  if (px) {
+    const base = px.replace(/\/+$/, "");
     out.push({ id: "custom", label: "my proxy",
       build: (la, lo, nm) => base + "/v2/point/" + la + "/" + lo + "/" + nm });
   }
@@ -377,7 +378,7 @@ const state = {
   mode: "demo", paused: false, lastFetch: 0, nextFetch: 0, _screen: [],
   soundOn: false, trailsOn: true, _enrichedFor: null, hideGround: true, tracked: null,
   theme: "green", soundTheme: "sonar", source: "online", sdrUrl: "http://localhost:8080/data/aircraft.json",
-  feed: "auto", activeFeed: null, feedLabel: null, apiKey: "", proxyUrl: ""
+  feed: "auto", activeFeed: null, feedLabel: null, apiKey: "", proxyUrl: "", autoProxy: null
 };
 const trails = {};            // icao24 -> [{x,y,t,col}]
 const enrichCache = {};       // icao24 -> {airline,route,photo,credit}
@@ -1133,6 +1134,15 @@ function boot() {
   els.ground.textContent = "🛬 Ground: " + (state.hideGround ? "hidden" : "shown");
   els.ground.classList.toggle("active", state.hideGround);
   els.soundThemeBtn.textContent = "🔉 " + (SOUNDS[state.soundTheme] || SOUNDS.sonar).name;
+  // A self-hosted feed proxy can publish its current address next to this page
+  // (feed-url.json). Tunnel hostnames rotate; this saves re-pasting one by hand.
+  fetch("feed-url.json", { cache: "no-store" }).then(r => r.ok ? r.json() : null).then(j => {
+    if (j && typeof j.url === "string" && j.url && !state.proxyUrl) {
+      state.autoProxy = j.url.replace(/\/+$/, "");
+      state.activeFeed = null; state.feedLabel = null;
+      if (state.source === "online" && state.origin) tick(true);
+    }
+  }).catch(() => {});
   updateReadout(); setMode("demo"); seedDemo();
   if (state.origin) { setMode("live"); tick(true); } else { requestLocation(); }
   setInterval(() => tick(false), 1000);

@@ -103,7 +103,17 @@ If you serve the radar locally, point **⚙ options → My CORS proxy** straight
 cloudflared tunnel --url http://127.0.0.1:8787    # free, no account, prints a *.trycloudflare.com URL
 ```
 
-Paste that URL into **⚙ options → My CORS proxy**. A quick tunnel's hostname changes on every restart. For a permanent address on your own domain:
+Paste that URL into **⚙ options → My CORS proxy**. ### Let the proxy publish its own address
+
+A quick tunnel's hostname changes on every restart, which normally means re-pasting it into ⚙ options. Instead, have the proxy write its current address to **`feed-url.json`** next to `index.html`:
+
+```json
+{ "url": "https://something-random.trycloudflare.com" }
+```
+
+The radar fetches that file on load (same origin, so no CORS involved) and uses it as the proxy whenever you haven't set one by hand. Leave **My CORS proxy** blank and the rotating hostname stops mattering — publish the new value on each start and the scope follows it.
+
+For a fixed address instead, use a named tunnel on a domain you own:
 
 ```bash
 cloudflared tunnel login                                   # one click in the browser
@@ -122,7 +132,7 @@ ingress:
   - service: http_status:404
 ```
 
-Set that hostname once in ⚙ options and you never touch it again. Start the proxy and the tunnel together at logon (a Task Scheduler task on Windows, a launchd/systemd unit elsewhere) so it comes back after a reboot.
+Start the proxy and the tunnel together at logon (a Task Scheduler task on Windows, a launchd/systemd unit elsewhere) so it comes back after a reboot.
 
 The proxy tries adsb.lol → adsb.fi → adsb.one, normalises both response shapes, caches for 5 s, and answers with `Access-Control-Allow-Origin: *`.
 **Turn your dongle into a radar in one command** — the repo ships a Docker stack (readsb + a same-origin web server) and double-click launchers:
