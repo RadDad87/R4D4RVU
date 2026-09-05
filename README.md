@@ -113,6 +113,14 @@ A quick tunnel's hostname changes on every restart, which normally means re-past
 
 The radar fetches that file on load (same origin, so no CORS involved) and uses it as the proxy whenever you haven't set one by hand. Leave **My CORS proxy** blank and the rotating hostname stops mattering — publish the new value on each start and the scope follows it.
 
+Because that file is public, the address in it is public too. Give the proxy a **shared token** so the address alone is useless: drop a random string in `key.txt` next to `local-feed-proxy.js` (or set `RADAR_FEED_KEY`), and every request then has to be
+
+```
+https://<tunnel-host>/<token>/v2/point/<lat>/<lon>/<radius_nm>
+```
+
+Anything without the right token gets a bare `404` — no CORS header, no hint that a service is there. Put the token in **⚙ options → My proxy key**; the radar inserts it as the first path segment. The token is stable and lives only in your browser, while the rotating hostname is the part that gets published, so the two halves are never public together.
+
 For a fixed address instead, use a named tunnel on a domain you own:
 
 ```bash

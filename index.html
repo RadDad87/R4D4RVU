@@ -254,6 +254,10 @@
             <input id="proxyurl" type="text" autocomplete="off" placeholder="https://your-tunnel.example.com" />
             <p class="hint">Run <code>local-feed-proxy.js</code> from the repo on your own machine and put an HTTPS tunnel in front of it, then paste that URL here. The radar appends <code>/v2/point/lat/lon/nm</code>. If the proxy publishes a <code>feed-url.json</code> next to this page, the radar picks it up automatically and you can leave this blank.</p>
             <label for="apikey">airplanes.live API key (optional)</label>
+            <label for="proxykey">My proxy key (optional)</label>
+            <input id="proxykey" type="text" autocomplete="off" placeholder="shared token your proxy requires" />
+            <p class="hint">If your proxy is set up with a shared token, put it here and the radar inserts it as the first path segment. Anyone who finds the address without the token just gets a 404.</p>
+            <label for="apikey">airplanes.live API key (optional)</label>
             <input id="apikey" type="text" autocomplete="off" placeholder="paste key if you feed airplanes.live" />
           </div>
           <p class="hint" id="usbHint" style="display:none;">Plug your SDR (RTL-SDR or HackRF One) into this computer, then pick it in the browser prompt. Desktop Chrome/Edge only. Set your location below so the scope centers on you. (Experimental — decodes ADS-B in the browser; HackRF support is unverified and may need tuning.)</p>
@@ -322,7 +326,10 @@ function feedList() {
   const out = [];
   const px = state.proxyUrl || state.autoProxy;
   if (px) {
-    const base = px.replace(/\/+$/, "");
+    let base = px.replace(/\/+$/, "");
+    // A self-hosted proxy can require a shared token as the first path segment,
+    // so publishing its rotating hostname does not hand it to strangers.
+    if (state.proxyKey && !base.endsWith("/" + state.proxyKey)) base += "/" + state.proxyKey;
     out.push({ id: "custom", label: "my proxy",
       build: (la, lo, nm) => base + "/v2/point/" + la + "/" + lo + "/" + nm });
   }
@@ -370,7 +377,7 @@ const els = {
   canvas: $("radar"), mode: $("st-mode"), count: $("st-count"), range: $("st-range"),
   pos: $("st-pos"), updated: $("st-updated"), next: $("st-next"), rangeSel: $("range"),
   locate: $("locate"), pause: $("pause"), save: $("save"), demo: $("demo"),
-  sound: $("sound"), trailsBtn: $("trails"), ground: $("ground"), track: $("track"), share: $("share"), trackrow: $("trackrow"), themeBtn: $("theme"), soundThemeBtn: $("soundtheme"), source: $("source"), sdrField: $("sdrField"), sdrUrlInput: $("sdrurl"), feedSel: $("feed"), feedField: $("feedField"), proxyInput: $("proxyurl"), apiKeyInput: $("apikey"), src: $("st-src"), lat: $("lat"), lon: $("lon"), detail: $("detail")
+  sound: $("sound"), trailsBtn: $("trails"), ground: $("ground"), track: $("track"), share: $("share"), trackrow: $("trackrow"), themeBtn: $("theme"), soundThemeBtn: $("soundtheme"), source: $("source"), sdrField: $("sdrField"), sdrUrlInput: $("sdrurl"), feedSel: $("feed"), feedField: $("feedField"), proxyInput: $("proxyurl"), proxyKeyInput: $("proxykey"), apiKeyInput: $("apikey"), src: $("st-src"), lat: $("lat"), lon: $("lon"), detail: $("detail")
 };
 const ctx = els.canvas.getContext("2d");
 const state = {
@@ -378,7 +385,7 @@ const state = {
   mode: "demo", paused: false, lastFetch: 0, nextFetch: 0, _screen: [],
   soundOn: false, trailsOn: true, _enrichedFor: null, hideGround: true, tracked: null,
   theme: "green", soundTheme: "sonar", source: "online", sdrUrl: "http://localhost:8080/data/aircraft.json",
-  feed: "auto", activeFeed: null, feedLabel: null, apiKey: "", proxyUrl: "", autoProxy: null
+  feed: "auto", activeFeed: null, feedLabel: null, apiKey: "", proxyUrl: "", proxyKey: "", autoProxy: null
 };
 const trails = {};            // icao24 -> [{x,y,t,col}]
 const enrichCache = {};       // icao24 -> {airline,route,photo,credit}
@@ -438,10 +445,11 @@ function loadPrefs() {
     if (typeof p.feed === "string" && p.feed) state.feed = p.feed;
     if (typeof p.apiKey === "string") state.apiKey = p.apiKey;
     if (typeof p.proxyUrl === "string") state.proxyUrl = p.proxyUrl;
+    if (typeof p.proxyKey === "string") state.proxyKey = p.proxyKey;
   } catch (e) {}
 }
 function savePrefs() {
-  localStorage.setItem("r4d4rvu", JSON.stringify({ rangeMi: state.rangeMi, origin: state.origin, trailsOn: state.trailsOn, hideGround: state.hideGround, theme: state.theme, soundTheme: state.soundTheme, source: state.source, sdrUrl: state.sdrUrl, feed: state.feed, apiKey: state.apiKey, proxyUrl: state.proxyUrl }));
+  localStorage.setItem("r4d4rvu", JSON.stringify({ rangeMi: state.rangeMi, origin: state.origin, trailsOn: state.trailsOn, hideGround: state.hideGround, theme: state.theme, soundTheme: state.soundTheme, source: state.source, sdrUrl: state.sdrUrl, feed: state.feed, apiKey: state.apiKey, proxyUrl: state.proxyUrl, proxyKey: state.proxyKey }));
 }
 const R_EARTH = 6371, toRad = d => d * Math.PI / 180, toDeg = r => r * 180 / Math.PI;
 function haversine(a, b) {
@@ -1077,6 +1085,10 @@ if (els.proxyInput) els.proxyInput.addEventListener("change", () => {
   state.proxyUrl = els.proxyInput.value.trim(); state.activeFeed = null; state.feedLabel = null;
   savePrefs(); if (state.source === "online" && state.origin) tick(true);
 });
+if (els.proxyKeyInput) els.proxyKeyInput.addEventListener("change", () => {
+  state.proxyKey = els.proxyKeyInput.value.trim(); state.activeFeed = null; state.feedLabel = null;
+  savePrefs(); if (state.source === "online" && state.origin) tick(true);
+});
 if (els.apiKeyInput) els.apiKeyInput.addEventListener("change", () => {
   state.apiKey = els.apiKeyInput.value.trim(); state.activeFeed = null; state.feedLabel = null;
   savePrefs(); if (state.source === "online" && state.origin) tick(true);
@@ -1127,6 +1139,7 @@ function boot() {
   els.sdrUrlInput.value = state.sdrUrl;
   if (els.feedSel) els.feedSel.value = state.feed;
   if (els.proxyInput) els.proxyInput.value = state.proxyUrl;
+  if (els.proxyKeyInput) els.proxyKeyInput.value = state.proxyKey;
   if (els.apiKeyInput) els.apiKeyInput.value = state.apiKey;
   els.sdrField.style.display = state.source === "sdr" ? "block" : "none";
   if (els.feedField) els.feedField.style.display = state.source === "online" ? "block" : "none";
